@@ -2,5 +2,5 @@ use strict;
 use warnings;
 
 while (<>) {
-  print if /\b{cat}/;
+  print if /\bcat\b/;
 }
