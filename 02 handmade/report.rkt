@@ -115,10 +115,17 @@
 
 @(codeblock @(file->string "lex.rkt"))
 
+@(define lex-eval
+      (parameterize ([sandbox-output 'string]
+                     [sandbox-error-output 'string]
+                     [sandbox-memory-limit 50])
+        (make-base-eval)))
+
+@(lex-eval '(require "lex.rkt"))
+
 @examples[ 
   #:label "Пример исполнения:"
-
-  (require "lex.rkt")
+  #:eval lex-eval
   (define in (open-input-string "a & (b + c)"))
   (define next-lexeme (lexer in))
   (next-lexeme)
@@ -159,6 +166,8 @@
 
 @(codeblock @(file->string "parser.rkt"))
 
+@section{Тестики и примеры}
+
 @(define base-eval 
       (parameterize ([sandbox-output 'string]
                      [sandbox-error-output 'string]
@@ -166,6 +175,11 @@
         (make-base-eval)))
 
 @(base-eval '(require pict racket/port "lex.rkt" "parser.rkt" pict/tree-layout racket/match))
+
+Я использовал более менее стандартную здешнюю библиотеку @racket[pict], ну а по идее @racket[pict/tree-layout]. 
+Надо было просто оттранслировать итоговое дерево в лейаут и сгенерировать финальную штуку.
+
+В целом, с тем же успехом можно было бы написать обвзяку над graphviz, но мне было немного лень.
 
 @examples[ 
   #:label "Давайте теперь пару примеров:"
@@ -217,8 +231,8 @@
   (code:comment "")
   (code:comment "самый примитивный тест")
   (code:comment "")
-  (parse-string "a")
-  (parse-string "a")
+  (parse-string "a  ")
+  (parse-string "  a")
   (parse-string "a")
   (code:comment "")
   (code:comment "primary тесты")
