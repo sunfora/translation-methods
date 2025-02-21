@@ -39,12 +39,109 @@
 
 
 // "%code requires" blocks.
-#line 5 "simple.yy"
+#line 3 "simple.yy"
 
+  #include <exception>
   #include <iostream>
-  
+  #include <sstream>
+  #include <vector>
+  #include <map>
+  #include <unordered_map>
 
-#line 48 "simple.cc"
+
+  namespace color {
+      enum code_t {
+          TEXT_RED      = 91,
+          TEXT_GREEN    = 92,
+          TEXT_BLUE     = 94,
+          TEXT_WHITE    = 97
+      };
+
+      template <typename E>
+      struct modifier {
+          const E data;
+          code_t code;
+          modifier(E e, code_t c) 
+            : data{e}
+            , code{c}
+          {}
+      };
+
+      template <typename E>
+      std::string to_string(const modifier<E> & x) {
+          std::ostringstream ss;
+          ss << x;
+          return ss.str();
+      }
+
+      template <typename T>
+      std::ostream& operator<<(std::ostream& os, const modifier<T>& mod) {
+          return os << "\033[" << mod.code << "m" << mod.data << "\033[0m";
+      }
+      
+      template<typename X>
+      auto red(X thing) {
+        return modifier<X>{thing, code_t::TEXT_RED};
+      }
+      
+      template<typename X>
+      auto green(X thing) {
+        return modifier<X>{thing, code_t::TEXT_GREEN};
+      }
+      
+      template<typename X>
+      auto blue(X thing) {
+        return modifier<X>{thing, code_t::TEXT_BLUE};
+      }
+      
+      template<typename X>
+      auto white(X thing) {
+        return modifier<X>{thing, code_t::TEXT_WHITE};
+      }
+  }
+
+  struct parse_err : std::exception {
+      std::string message;
+
+      parse_err(const std::string& msg) 
+        : message{msg} 
+        {}
+
+      const char* what() const noexcept override {
+          return message.c_str();
+      }
+  };
+  
+  struct undefined_variable : std::exception {
+      std::string message;
+
+      undefined_variable(const std::string& varname) 
+        : message(varname + " is referenced before assignment") 
+        {}
+
+      const char* what() const noexcept override {
+          return message.c_str();
+      }
+  };
+
+
+  struct evaluation_context {
+    std::unordered_map<std::string, int> storage;
+
+    int eval(const std::string & name) {
+      auto it = this->storage.find(name);
+      if (it != this->storage.end()) {
+        return it->second;
+      }
+      throw undefined_variable(name);
+    }
+
+    void set(std::string key, int value) {
+      storage[key] = value;
+    }
+  };
+
+#line 145 "simple.cc"
 
 
 # include <cstdlib> // std::abort
@@ -179,7 +276,7 @@
 #endif
 
 namespace yy {
-#line 183 "simple.cc"
+#line 280 "simple.cc"
 
 
 
@@ -377,6 +474,8 @@ namespace yy {
     {
       // OPEN_PAREN
       // CLOSED_PAREN
+      // SEMICOLON
+      // SET
       char dummy1[sizeof (char)];
 
       // NUMBER
@@ -384,14 +483,12 @@ namespace yy {
       // DIV
       // MUL
       // SUB
+      // expr
       char dummy2[sizeof (int)];
 
       // VARIABLE
-      // item
+      // statement
       char dummy3[sizeof (std::string)];
-
-      // list
-      char dummy4[sizeof (std::vector<std::string>)];
     };
 
     /// The size of the largest semantic type.
@@ -442,7 +539,9 @@ namespace yy {
     MUL = 262,                     // MUL
     SUB = 263,                     // SUB
     OPEN_PAREN = 264,              // OPEN_PAREN
-    CLOSED_PAREN = 265             // CLOSED_PAREN
+    CLOSED_PAREN = 265,            // CLOSED_PAREN
+    SEMICOLON = 266,               // SEMICOLON
+    SET = 267                      // SET
       };
       /// Backward compatibility alias (Bison 3.6).
       typedef token_kind_type yytokentype;
@@ -459,7 +558,7 @@ namespace yy {
     {
       enum symbol_kind_type
       {
-        YYNTOKENS = 11, ///< Number of tokens.
+        YYNTOKENS = 13, ///< Number of tokens.
         S_YYEMPTY = -2,
         S_YYEOF = 0,                             // "end of file"
         S_YYerror = 1,                           // error
@@ -472,10 +571,12 @@ namespace yy {
         S_SUB = 8,                               // SUB
         S_OPEN_PAREN = 9,                        // OPEN_PAREN
         S_CLOSED_PAREN = 10,                     // CLOSED_PAREN
-        S_YYACCEPT = 11,                         // $accept
-        S_result = 12,                           // result
-        S_list = 13,                             // list
-        S_item = 14                              // item
+        S_SEMICOLON = 11,                        // SEMICOLON
+        S_SET = 12,                              // SET
+        S_YYACCEPT = 13,                         // $accept
+        S_result = 14,                           // result
+        S_statement = 15,                        // statement
+        S_expr = 16                              // expr
       };
     };
 
@@ -512,6 +613,8 @@ namespace yy {
     {
       case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
       case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
         value.move< char > (std::move (that.value));
         break;
 
@@ -520,16 +623,13 @@ namespace yy {
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
+      case symbol_kind::S_expr: // expr
         value.move< int > (std::move (that.value));
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
-      case symbol_kind::S_item: // item
+      case symbol_kind::S_statement: // statement
         value.move< std::string > (std::move (that.value));
-        break;
-
-      case symbol_kind::S_list: // list
-        value.move< std::vector<std::string> > (std::move (that.value));
         break;
 
       default:
@@ -589,18 +689,6 @@ namespace yy {
       {}
 #endif
 
-#if 201103L <= YY_CPLUSPLUS
-      basic_symbol (typename Base::kind_type t, std::vector<std::string>&& v)
-        : Base (t)
-        , value (std::move (v))
-      {}
-#else
-      basic_symbol (typename Base::kind_type t, const std::vector<std::string>& v)
-        : Base (t)
-        , value (v)
-      {}
-#endif
-
       /// Destroy the symbol.
       ~basic_symbol ()
       {
@@ -627,6 +715,8 @@ switch (yykind)
     {
       case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
       case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
         value.template destroy< char > ();
         break;
 
@@ -635,16 +725,13 @@ switch (yykind)
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
+      case symbol_kind::S_expr: // expr
         value.template destroy< int > ();
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
-      case symbol_kind::S_item: // item
+      case symbol_kind::S_statement: // statement
         value.template destroy< std::string > ();
-        break;
-
-      case symbol_kind::S_list: // list
-        value.template destroy< std::vector<std::string> > ();
         break;
 
       default:
@@ -654,14 +741,11 @@ switch (yykind)
         Base::clear ();
       }
 
-#if YYDEBUG || 0
       /// The user-facing name of this symbol.
       const char *name () const YY_NOEXCEPT
       {
         return parser::symbol_name (this->kind ());
       }
-#endif // #if YYDEBUG || 0
-
 
       /// Backward compatibility (Bison 3.6).
       symbol_kind_type type_get () const YY_NOEXCEPT;
@@ -770,7 +854,7 @@ switch (yykind)
     };
 
     /// Build a parser object.
-    parser ();
+    parser (evaluation_context * ctx_yyarg);
     virtual ~parser ();
 
 #if 201103L <= YY_CPLUSPLUS
@@ -809,12 +893,9 @@ switch (yykind)
     /// Report a syntax error.
     void error (const syntax_error& err);
 
-#if YYDEBUG || 0
     /// The user-facing name of the symbol whose (internal) number is
     /// YYSYMBOL.  No bounds checking.
     static const char *symbol_name (symbol_kind_type yysymbol);
-#endif // #if YYDEBUG || 0
-
 
     // Implementation of make_symbol for each token kind.
 #if 201103L <= YY_CPLUSPLUS
@@ -982,7 +1063,53 @@ switch (yykind)
         return symbol_type (token::CLOSED_PAREN, v);
       }
 #endif
+#if 201103L <= YY_CPLUSPLUS
+      static
+      symbol_type
+      make_SEMICOLON (char v)
+      {
+        return symbol_type (token::SEMICOLON, std::move (v));
+      }
+#else
+      static
+      symbol_type
+      make_SEMICOLON (const char& v)
+      {
+        return symbol_type (token::SEMICOLON, v);
+      }
+#endif
+#if 201103L <= YY_CPLUSPLUS
+      static
+      symbol_type
+      make_SET (char v)
+      {
+        return symbol_type (token::SET, std::move (v));
+      }
+#else
+      static
+      symbol_type
+      make_SET (const char& v)
+      {
+        return symbol_type (token::SET, v);
+      }
+#endif
 
+
+    class context
+    {
+    public:
+      context (const parser& yyparser, const symbol_type& yyla);
+      const symbol_type& lookahead () const YY_NOEXCEPT { return yyla_; }
+      symbol_kind_type token () const YY_NOEXCEPT { return yyla_.kind (); }
+      /// Put in YYARG at most YYARGN of the expected tokens, and return the
+      /// number of tokens stored in YYARG.  If YYARG is null, return the
+      /// number of expected tokens (guaranteed to be less than YYNTOKENS).
+      int expected_tokens (symbol_kind_type yyarg[], int yyargn) const;
+
+    private:
+      const parser& yyparser_;
+      const symbol_type& yyla_;
+    };
 
   private:
 #if YY_CPLUSPLUS < 201103L
@@ -996,6 +1123,13 @@ switch (yykind)
     /// Stored state numbers (used for stacks).
     typedef signed char state_type;
 
+    /// The arguments of the error message.
+    int yy_syntax_error_arguments_ (const context& yyctx,
+                                    symbol_kind_type yyarg[], int yyargn) const;
+
+    /// Generate an error message.
+    /// \param yyctx     the context in which the error occurred.
+    virtual std::string yysyntax_error_ (const context& yyctx) const;
     /// Compute post-reduction state.
     /// \param yystate   the current state
     /// \param yysym     the nonterminal to push on the stack
@@ -1017,10 +1151,6 @@ switch (yykind)
     /// are valid, yet not members of the token_kind_type enum.
     static symbol_kind_type yytranslate_ (int t) YY_NOEXCEPT;
 
-#if YYDEBUG || 0
-    /// For a symbol, its name in clear.
-    static const char* const yytname_[];
-#endif // #if YYDEBUG || 0
 
 
     // Tables.
@@ -1059,7 +1189,7 @@ switch (yykind)
 
 #if YYDEBUG
     // YYRLINE[YYN] -- Source line where rule number YYN was defined.
-    static const unsigned char yyrline_[];
+    static const short yyrline_[];
     /// Report on the debug stream that the rule \a r is going to be reduced.
     virtual void yy_reduce_print_ (int r) const;
     /// Print the state stack on the debug stream.
@@ -1286,12 +1416,14 @@ switch (yykind)
     /// Constants.
     enum
     {
-      yylast_ = 8,     ///< Last index in yytable_.
+      yylast_ = 34,     ///< Last index in yytable_.
       yynnts_ = 4,  ///< Number of nonterminal symbols.
-      yyfinal_ = 3 ///< Termination state number.
+      yyfinal_ = 2 ///< Termination state number.
     };
 
 
+    // User arguments.
+    evaluation_context * ctx;
 
   };
 
@@ -1330,10 +1462,10 @@ switch (yykind)
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     1,     2,     3,     4,
-       5,     6,     7,     8,     9,    10
+       5,     6,     7,     8,     9,    10,    11,    12
     };
     // Last valid token kind.
-    const int code_max = 265;
+    const int code_max = 267;
 
     if (t <= 0)
       return symbol_kind::S_YYEOF;
@@ -1353,6 +1485,8 @@ switch (yykind)
     {
       case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
       case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
         value.copy< char > (YY_MOVE (that.value));
         break;
 
@@ -1361,16 +1495,13 @@ switch (yykind)
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
+      case symbol_kind::S_expr: // expr
         value.copy< int > (YY_MOVE (that.value));
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
-      case symbol_kind::S_item: // item
+      case symbol_kind::S_statement: // statement
         value.copy< std::string > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_list: // list
-        value.copy< std::vector<std::string> > (YY_MOVE (that.value));
         break;
 
       default:
@@ -1406,6 +1537,8 @@ switch (yykind)
     {
       case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
       case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
         value.move< char > (YY_MOVE (s.value));
         break;
 
@@ -1414,16 +1547,13 @@ switch (yykind)
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
+      case symbol_kind::S_expr: // expr
         value.move< int > (YY_MOVE (s.value));
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
-      case symbol_kind::S_item: // item
+      case symbol_kind::S_statement: // statement
         value.move< std::string > (YY_MOVE (s.value));
-        break;
-
-      case symbol_kind::S_list: // list
-        value.move< std::vector<std::string> > (YY_MOVE (s.value));
         break;
 
       default:
@@ -1483,7 +1613,7 @@ switch (yykind)
 
 
 } // yy
-#line 1487 "simple.cc"
+#line 1617 "simple.cc"
 
 
 
@@ -1491,36 +1621,24 @@ switch (yykind)
 
 
 // Unqualified %code blocks.
-#line 11 "simple.yy"
-
-  // Print a list of strings.
-  std::ostream& operator<< (std::ostream& o, const std::vector<std::string>& ss)
-  {
-    o << '{';
-    const char *sep = "";
-    for (const auto& s: ss)
-      {
-        o << sep << s;
-        sep = ", ";
-      }
-    return o << '}';
-  }
-#line 29 "simple.yy"
+#line 112 "simple.yy"
 
   namespace yy
   {
     // Return the next token.
     parser::symbol_type yylex ()
     {
-      const int WHITESPACE   = 0b100000000;
-      const int VARIABLE     = 0b010000000;
-      const int NUMBER       = 0b001000000;
-      const int ADD          = 0b000100000;
-      const int DIV          = 0b000010000;
-      const int MUL          = 0b000001000;
-      const int SUB          = 0b000000100;
-      const int OPEN_PAREN   = 0b000000010;
-      const int CLOSED_PAREN = 0b000000001;
+      const int SEMICOLON    = 0b10000000000;
+      const int SET          = 0b01000000000;
+      const int WHITESPACE   = 0b00100000000;
+      const int VARIABLE     = 0b00010000000;
+      const int NUMBER       = 0b00001000000;
+      const int ADD          = 0b00000100000;
+      const int DIV          = 0b00000010000;
+      const int MUL          = 0b00000001000;
+      const int SUB          = 0b00000000100;
+      const int OPEN_PAREN   = 0b00000000010;
+      const int CLOSED_PAREN = 0b00000000001;
 
       static std::string buffer;
       static int read = std::cin.get();
@@ -1600,6 +1718,14 @@ switch (yykind)
           collect(CLOSED_PAREN);
           return parser::make_CLOSED_PAREN(')');
         }
+        case ';': {
+          collect(SEMICOLON);
+          return parser::make_SEMICOLON(';');
+        }
+        case '=': {
+          collect(SET);
+          return parser::make_SET('=');
+        }
       }
 
       /* nothing that looks like operator 
@@ -1611,12 +1737,13 @@ switch (yykind)
         return parser::make_NUMBER(std::stoi(buffer));
       }
 
-      /* and we should not get there */
-      throw std::runtime_error("Unexpected input at ...");
+      /* undefined */
+      collect(0);
+      return parser::make_YYUNDEF();
     }
   }
 
-#line 1620 "simple.cc"
+#line 1747 "simple.cc"
 
 
 #ifndef YY_
@@ -1689,16 +1816,17 @@ switch (yykind)
 #define YYRECOVERING()  (!!yyerrstatus_)
 
 namespace yy {
-#line 1693 "simple.cc"
+#line 1820 "simple.cc"
 
   /// Build a parser object.
-  parser::parser ()
+  parser::parser (evaluation_context * ctx_yyarg)
 #if YYDEBUG
     : yydebug_ (false),
-      yycdebug_ (&std::cerr)
+      yycdebug_ (&std::cerr),
 #else
-
+    :
 #endif
+      ctx (ctx_yyarg)
   {}
 
   parser::~parser ()
@@ -1758,6 +1886,8 @@ namespace yy {
     {
       case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
       case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
         value.YY_MOVE_OR_COPY< char > (YY_MOVE (that.value));
         break;
 
@@ -1766,16 +1896,13 @@ namespace yy {
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
+      case symbol_kind::S_expr: // expr
         value.YY_MOVE_OR_COPY< int > (YY_MOVE (that.value));
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
-      case symbol_kind::S_item: // item
+      case symbol_kind::S_statement: // statement
         value.YY_MOVE_OR_COPY< std::string > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_list: // list
-        value.YY_MOVE_OR_COPY< std::vector<std::string> > (YY_MOVE (that.value));
         break;
 
       default:
@@ -1795,6 +1922,8 @@ namespace yy {
     {
       case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
       case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
         value.move< char > (YY_MOVE (that.value));
         break;
 
@@ -1803,16 +1932,13 @@ namespace yy {
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
+      case symbol_kind::S_expr: // expr
         value.move< int > (YY_MOVE (that.value));
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
-      case symbol_kind::S_item: // item
+      case symbol_kind::S_statement: // statement
         value.move< std::string > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_list: // list
-        value.move< std::vector<std::string> > (YY_MOVE (that.value));
         break;
 
       default:
@@ -1832,6 +1958,8 @@ namespace yy {
     {
       case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
       case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
         value.copy< char > (that.value);
         break;
 
@@ -1840,16 +1968,13 @@ namespace yy {
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
+      case symbol_kind::S_expr: // expr
         value.copy< int > (that.value);
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
-      case symbol_kind::S_item: // item
+      case symbol_kind::S_statement: // statement
         value.copy< std::string > (that.value);
-        break;
-
-      case symbol_kind::S_list: // list
-        value.copy< std::vector<std::string> > (that.value);
         break;
 
       default:
@@ -1867,6 +1992,8 @@ namespace yy {
     {
       case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
       case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
         value.move< char > (that.value);
         break;
 
@@ -1875,16 +2002,13 @@ namespace yy {
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
+      case symbol_kind::S_expr: // expr
         value.move< int > (that.value);
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
-      case symbol_kind::S_item: // item
+      case symbol_kind::S_statement: // statement
         value.move< std::string > (that.value);
-        break;
-
-      case symbol_kind::S_list: // list
-        value.move< std::vector<std::string> > (that.value);
         break;
 
       default:
@@ -2143,6 +2267,8 @@ namespace yy {
     {
       case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
       case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
         yylhs.value.emplace< char > ();
         break;
 
@@ -2151,16 +2277,13 @@ namespace yy {
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
+      case symbol_kind::S_expr: // expr
         yylhs.value.emplace< int > ();
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
-      case symbol_kind::S_item: // item
+      case symbol_kind::S_statement: // statement
         yylhs.value.emplace< std::string > ();
-        break;
-
-      case symbol_kind::S_list: // list
-        yylhs.value.emplace< std::vector<std::string> > ();
         break;
 
       default:
@@ -2177,74 +2300,122 @@ namespace yy {
         {
           switch (yyn)
             {
-  case 2: // result: list
-#line 141 "simple.yy"
-        { std::cout << yystack_[0].value.as < std::vector<std::string> > () << '\n'; }
-#line 2184 "simple.cc"
+  case 3: // result: result statement SEMICOLON
+#line 254 "simple.yy"
+                             { 
+    for (auto text_node : yystack_[1].value.as < std::string > ()) {
+      std::cout << text_node;
+    }
+    std::cout << std::endl; 
+  }
+#line 2312 "simple.cc"
     break;
 
-  case 3: // list: %empty
-#line 146 "simple.yy"
-             { /* Generates an empty string list */ }
-#line 2190 "simple.cc"
+  case 4: // result: result error
+#line 260 "simple.yy"
+               {
+    /* skip everything up to semicolon */
+    using sk = parser::symbol_kind;
+
+    auto should_skip = [&] (parser::symbol_type tok) {
+      return tok.kind() != sk::S_SEMICOLON 
+      &&     tok.kind() != sk::S_YYEOF;
+    };
+    
+    /* it should be yychar or something like that 
+       but it is not available for C++ 
+       so I use some internal details */
+    while (should_skip(yyla)) {
+      parser::symbol_type lookahead = yylex();
+      yyla.move(lookahead);
+    }
+    /* clear the token */
+    yyclearin;
+    yyerrok;
+  }
+#line 2337 "simple.cc"
     break;
 
-  case 4: // list: list item
-#line 147 "simple.yy"
-             { yylhs.value.as < std::vector<std::string> > () = yystack_[1].value.as < std::vector<std::string> > (); yylhs.value.as < std::vector<std::string> > ().push_back (yystack_[0].value.as < std::string > ()); }
-#line 2196 "simple.cc"
+  case 5: // statement: %empty
+#line 283 "simple.yy"
+         {
+    yylhs.value.as < std::string > () = std::string{};
+  }
+#line 2345 "simple.cc"
     break;
 
-  case 5: // item: VARIABLE
-#line 161 "simple.yy"
-               { yylhs.value.as < std::string > () = yystack_[0].value.as < std::string > ();                 }
-#line 2202 "simple.cc"
+  case 6: // statement: VARIABLE SET expr
+#line 286 "simple.yy"
+                    {
+    /* assign */
+    ctx->set(yystack_[2].value.as < std::string > (), yystack_[0].value.as < int > ());
+    yylhs.value.as < std::string > () = yystack_[2].value.as < std::string > () + " = " + color::to_string(color::blue(yystack_[0].value.as < int > ()));
+  }
+#line 2355 "simple.cc"
     break;
 
-  case 6: // item: NUMBER
-#line 162 "simple.yy"
-               { yylhs.value.as < std::string > () = std::to_string(yystack_[0].value.as < int > ()); }
-#line 2208 "simple.cc"
+  case 7: // statement: expr
+#line 291 "simple.yy"
+       {
+    yylhs.value.as < std::string > () = color::to_string(color::blue(yystack_[0].value.as < int > ())); 
+  }
+#line 2363 "simple.cc"
     break;
 
-  case 7: // item: ADD
-#line 163 "simple.yy"
-               { yylhs.value.as < std::string > () = std::string("`+`"); }
-#line 2214 "simple.cc"
+  case 8: // expr: expr ADD expr
+#line 296 "simple.yy"
+                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () + yystack_[0].value.as < int > (); }
+#line 2369 "simple.cc"
     break;
 
-  case 8: // item: DIV
-#line 164 "simple.yy"
-               { yylhs.value.as < std::string > () = std::string("`/`"); }
-#line 2220 "simple.cc"
+  case 9: // expr: expr SUB expr
+#line 297 "simple.yy"
+                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () - yystack_[0].value.as < int > (); }
+#line 2375 "simple.cc"
     break;
 
-  case 9: // item: MUL
-#line 165 "simple.yy"
-               { yylhs.value.as < std::string > () = std::string("`*`"); }
-#line 2226 "simple.cc"
+  case 10: // expr: expr MUL expr
+#line 298 "simple.yy"
+                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () * yystack_[0].value.as < int > (); }
+#line 2381 "simple.cc"
     break;
 
-  case 10: // item: SUB
-#line 166 "simple.yy"
-               { yylhs.value.as < std::string > () = std::string("`-`"); }
-#line 2232 "simple.cc"
+  case 11: // expr: expr DIV expr
+#line 299 "simple.yy"
+                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () / yystack_[0].value.as < int > (); }
+#line 2387 "simple.cc"
     break;
 
-  case 11: // item: OPEN_PAREN
-#line 167 "simple.yy"
-               { yylhs.value.as < std::string > () = std::string("`(`"); }
-#line 2238 "simple.cc"
+  case 12: // expr: OPEN_PAREN expr CLOSED_PAREN
+#line 307 "simple.yy"
+                               {
+    yylhs.value.as < int > () = yystack_[1].value.as < int > ();
+  }
+#line 2395 "simple.cc"
     break;
 
-  case 12: // item: CLOSED_PAREN
-#line 168 "simple.yy"
-               { yylhs.value.as < std::string > () = std::string("`)`"); }
-#line 2244 "simple.cc"
+  case 13: // expr: VARIABLE
+#line 312 "simple.yy"
+           { 
+      try {
+        yylhs.value.as < int > () = ctx->eval(yystack_[0].value.as < std::string > ()); 
+      }
+      catch (undefined_variable e) {
+        yy::parser::error(e.message);
+        YYERROR;
+      }
+    }
+#line 2409 "simple.cc"
+    break;
+
+  case 14: // expr: NUMBER
+#line 321 "simple.yy"
+         { yylhs.value.as < int > () = yystack_[0].value.as < int > (); }
+#line 2415 "simple.cc"
     break;
 
 
-#line 2248 "simple.cc"
+#line 2419 "simple.cc"
 
             default:
               break;
@@ -2276,7 +2447,8 @@ namespace yy {
     if (!yyerrstatus_)
       {
         ++yynerrs_;
-        std::string msg = YY_("syntax error");
+        context yyctx (*this, yyla);
+        std::string msg = yysyntax_error_ (yyctx);
         error (YY_MOVE (msg));
       }
 
@@ -2417,105 +2589,227 @@ namespace yy {
     error (yyexc.what ());
   }
 
-#if YYDEBUG || 0
   const char *
   parser::symbol_name (symbol_kind_type yysymbol)
   {
-    return yytname_[yysymbol];
+    static const char *const yy_sname[] =
+    {
+    "end of file", "error", "invalid token", "VARIABLE", "NUMBER", "ADD",
+  "DIV", "MUL", "SUB", "OPEN_PAREN", "CLOSED_PAREN", "SEMICOLON", "SET",
+  "$accept", "result", "statement", "expr", YY_NULLPTR
+    };
+    return yy_sname[yysymbol];
   }
-#endif // #if YYDEBUG || 0
+
+
+
+  // parser::context.
+  parser::context::context (const parser& yyparser, const symbol_type& yyla)
+    : yyparser_ (yyparser)
+    , yyla_ (yyla)
+  {}
+
+  int
+  parser::context::expected_tokens (symbol_kind_type yyarg[], int yyargn) const
+  {
+    // Actual number of expected tokens
+    int yycount = 0;
+
+    const int yyn = yypact_[+yyparser_.yystack_[0].state];
+    if (!yy_pact_value_is_default_ (yyn))
+      {
+        /* Start YYX at -YYN if negative to avoid negative indexes in
+           YYCHECK.  In other words, skip the first -YYN actions for
+           this state because they are default actions.  */
+        const int yyxbegin = yyn < 0 ? -yyn : 0;
+        // Stay within bounds of both yycheck and yytname.
+        const int yychecklim = yylast_ - yyn + 1;
+        const int yyxend = yychecklim < YYNTOKENS ? yychecklim : YYNTOKENS;
+        for (int yyx = yyxbegin; yyx < yyxend; ++yyx)
+          if (yycheck_[yyx + yyn] == yyx && yyx != symbol_kind::S_YYerror
+              && !yy_table_value_is_error_ (yytable_[yyx + yyn]))
+            {
+              if (!yyarg)
+                ++yycount;
+              else if (yycount == yyargn)
+                return 0;
+              else
+                yyarg[yycount++] = YY_CAST (symbol_kind_type, yyx);
+            }
+      }
+
+    if (yyarg && yycount == 0 && 0 < yyargn)
+      yyarg[0] = symbol_kind::S_YYEMPTY;
+    return yycount;
+  }
 
 
 
 
 
 
+  int
+  parser::yy_syntax_error_arguments_ (const context& yyctx,
+                                                 symbol_kind_type yyarg[], int yyargn) const
+  {
+    /* There are many possibilities here to consider:
+       - If this state is a consistent state with a default action, then
+         the only way this function was invoked is if the default action
+         is an error action.  In that case, don't check for expected
+         tokens because there are none.
+       - The only way there can be no lookahead present (in yyla) is
+         if this state is a consistent state with a default action.
+         Thus, detecting the absence of a lookahead is sufficient to
+         determine that there is no unexpected or expected token to
+         report.  In that case, just report a simple "syntax error".
+       - Don't assume there isn't a lookahead just because this state is
+         a consistent state with a default action.  There might have
+         been a previous inconsistent state, consistent state with a
+         non-default action, or user semantic action that manipulated
+         yyla.  (However, yyla is currently not documented for users.)
+       - Of course, the expected token list depends on states to have
+         correct lookahead information, and it depends on the parser not
+         to perform extra reductions after fetching a lookahead from the
+         scanner and before detecting a syntax error.  Thus, state merging
+         (from LALR or IELR) and default reductions corrupt the expected
+         token list.  However, the list is correct for canonical LR with
+         one exception: it will still contain any token that will not be
+         accepted due to an error action in a later state.
+    */
+
+    if (!yyctx.lookahead ().empty ())
+      {
+        if (yyarg)
+          yyarg[0] = yyctx.token ();
+        int yyn = yyctx.expected_tokens (yyarg ? yyarg + 1 : yyarg, yyargn - 1);
+        return yyn + 1;
+      }
+    return 0;
+  }
+
+  // Generate an error message.
+  std::string
+  parser::yysyntax_error_ (const context& yyctx) const
+  {
+    // Its maximum.
+    enum { YYARGS_MAX = 5 };
+    // Arguments of yyformat.
+    symbol_kind_type yyarg[YYARGS_MAX];
+    int yycount = yy_syntax_error_arguments_ (yyctx, yyarg, YYARGS_MAX);
+
+    char const* yyformat = YY_NULLPTR;
+    switch (yycount)
+      {
+#define YYCASE_(N, S)                         \
+        case N:                               \
+          yyformat = S;                       \
+        break
+      default: // Avoid compiler warnings.
+        YYCASE_ (0, YY_("syntax error"));
+        YYCASE_ (1, YY_("syntax error, unexpected %s"));
+        YYCASE_ (2, YY_("syntax error, unexpected %s, expecting %s"));
+        YYCASE_ (3, YY_("syntax error, unexpected %s, expecting %s or %s"));
+        YYCASE_ (4, YY_("syntax error, unexpected %s, expecting %s or %s or %s"));
+        YYCASE_ (5, YY_("syntax error, unexpected %s, expecting %s or %s or %s or %s"));
+#undef YYCASE_
+      }
+
+    std::string yyres;
+    // Argument number.
+    std::ptrdiff_t yyi = 0;
+    for (char const* yyp = yyformat; *yyp; ++yyp)
+      if (yyp[0] == '%' && yyp[1] == 's' && yyi < yycount)
+        {
+          yyres += symbol_name (yyarg[yyi++]);
+          ++yyp;
+        }
+      else
+        yyres += *yyp;
+    return yyres;
+  }
 
 
+  const signed char parser::yypact_ninf_ = -11;
 
-  const signed char parser::yypact_ninf_ = -4;
-
-  const signed char parser::yytable_ninf_ = -1;
+  const signed char parser::yytable_ninf_ = -6;
 
   const signed char
   parser::yypact_[] =
   {
-      -4,     8,    -3,    -4,    -4,    -4,    -4,    -4,    -4,    -4,
-      -4,    -4,    -4
+     -11,     0,   -11,   -11,   -10,   -11,    13,    -5,    24,    13,
+     -11,    18,   -11,    13,    13,    13,    13,    24,   -11,    12,
+     -11,     1,    27
   };
 
   const signed char
   parser::yydefact_[] =
   {
-       3,     0,     2,     1,     5,     6,     7,     8,     9,    10,
-      11,    12,     4
+       2,     0,     1,     4,    13,    14,     0,     0,     7,     0,
+      13,     0,     3,     0,     0,     0,     0,     6,    12,     8,
+      11,    10,     9
   };
 
   const signed char
   parser::yypgoto_[] =
   {
-      -4,    -4,    -4,    -4
+     -11,   -11,   -11,    -1
   };
 
   const signed char
   parser::yydefgoto_[] =
   {
-       0,     1,     2,    12
+       0,     1,     7,     8
   };
 
   const signed char
   parser::yytable_[] =
   {
-       4,     5,     6,     7,     8,     9,    10,    11,     3
+       2,     3,     9,     4,     5,    11,    12,    14,    17,     6,
+       0,    -5,    19,    20,    21,    22,    10,     5,    14,    15,
+      16,     0,     6,    13,    14,    15,    16,     0,    18,    13,
+      14,    15,    16,    14,    15
   };
 
   const signed char
   parser::yycheck_[] =
   {
-       3,     4,     5,     6,     7,     8,     9,    10,     0
+       0,     1,    12,     3,     4,     6,    11,     6,     9,     9,
+      -1,    11,    13,    14,    15,    16,     3,     4,     6,     7,
+       8,    -1,     9,     5,     6,     7,     8,    -1,    10,     5,
+       6,     7,     8,     6,     7
   };
 
   const signed char
   parser::yystos_[] =
   {
-       0,    12,    13,     0,     3,     4,     5,     6,     7,     8,
-       9,    10,    14
+       0,    14,     0,     1,     3,     4,     9,    15,    16,    12,
+       3,    16,    11,     5,     6,     7,     8,    16,    10,    16,
+      16,    16,    16
   };
 
   const signed char
   parser::yyr1_[] =
   {
-       0,    11,    12,    13,    13,    14,    14,    14,    14,    14,
-      14,    14,    14
+       0,    13,    14,    14,    14,    15,    15,    15,    16,    16,
+      16,    16,    16,    16,    16
   };
 
   const signed char
   parser::yyr2_[] =
   {
-       0,     2,     1,     0,     2,     1,     1,     1,     1,     1,
-       1,     1,     1
+       0,     2,     0,     3,     2,     0,     3,     1,     3,     3,
+       3,     3,     3,     1,     1
   };
 
 
-#if YYDEBUG
-  // YYTNAME[SYMBOL-NUM] -- String name of the symbol SYMBOL-NUM.
-  // First, the terminals, then, starting at \a YYNTOKENS, nonterminals.
-  const char*
-  const parser::yytname_[] =
-  {
-  "\"end of file\"", "error", "\"invalid token\"", "VARIABLE", "NUMBER",
-  "ADD", "DIV", "MUL", "SUB", "OPEN_PAREN", "CLOSED_PAREN", "$accept",
-  "result", "list", "item", YY_NULLPTR
-  };
-#endif
 
 
 #if YYDEBUG
-  const unsigned char
+  const short
   parser::yyrline_[] =
   {
-       0,   141,   141,   146,   147,   161,   162,   163,   164,   165,
-     166,   167,   168
+       0,   253,   253,   254,   260,   283,   286,   291,   296,   297,
+     298,   299,   307,   312,   321
   };
 
   void
@@ -2547,21 +2841,22 @@ namespace yy {
 
 
 } // yy
-#line 2551 "simple.cc"
+#line 2845 "simple.cc"
 
-#line 169 "simple.yy"
+#line 323 "simple.yy"
 
 namespace yy
 {
   // Report an error to the user.
   void parser::error (const std::string& msg)
   {
-    std::cerr << msg << '\n';
+    std::cerr << color::red(msg) << std::endl;
   }
 }
 
 int main ()
 {
-  yy::parser parse;
+  evaluation_context ctx;
+  yy::parser parse(&ctx);
   return parse();
 }

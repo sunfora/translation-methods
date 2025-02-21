@@ -1,23 +1,70 @@
 %language "c++"
 
-%define api.location.type {location_t}
-
-%code {
+%code requires {
   #include <exception>
   #include <iostream>
+  #include <sstream>
   #include <vector>
   #include <map>
-  
-  struct location_t {
-    int pos;
-    int line;
+  #include <unordered_map>
+
+
+  namespace color {
+      enum code_t {
+          TEXT_RED      = 91,
+          TEXT_GREEN    = 92,
+          TEXT_BLUE     = 94,
+          TEXT_WHITE    = 97
+      };
+
+      template <typename E>
+      struct modifier {
+          const E data;
+          code_t code;
+          modifier(E e, code_t c) 
+            : data{e}
+            , code{c}
+          {}
+      };
+
+      template <typename E>
+      std::string to_string(const modifier<E> & x) {
+          std::ostringstream ss;
+          ss << x;
+          return ss.str();
+      }
+
+      template <typename T>
+      std::ostream& operator<<(std::ostream& os, const modifier<T>& mod) {
+          return os << "\033[" << mod.code << "m" << mod.data << "\033[0m";
+      }
+      
+      template<typename X>
+      auto red(X thing) {
+        return modifier<X>{thing, code_t::TEXT_RED};
+      }
+      
+      template<typename X>
+      auto green(X thing) {
+        return modifier<X>{thing, code_t::TEXT_GREEN};
+      }
+      
+      template<typename X>
+      auto blue(X thing) {
+        return modifier<X>{thing, code_t::TEXT_BLUE};
+      }
+      
+      template<typename X>
+      auto white(X thing) {
+        return modifier<X>{thing, code_t::TEXT_WHITE};
+      }
   }
 
   struct parse_err : std::exception {
       std::string message;
 
-      undefined_variable(const location & loc, const std::string& msg) 
-        : message(std::to_string(loc.line) + ":" + std::to_string(pos) + msg) 
+      parse_err(const std::string& msg) 
+        : message{msg} 
         {}
 
       const char* what() const noexcept override {
@@ -40,23 +87,25 @@
 
   struct evaluation_context {
     std::unordered_map<std::string, int> storage;
-    int eval(std::string) {
-      auto it = storage.find(std::string);
-      if (it != storage.end()) {
+
+    int eval(const std::string & name) {
+      auto it = this->storage.find(name);
+      if (it != this->storage.end()) {
         return it->second;
       }
-      throw undefined_variable(std::string);
+      throw undefined_variable(name);
     }
 
     void set(std::string key, int value) {
       storage[key] = value;
     }
-  }
+  };
 }
 
 %parse-param { evaluation_context * ctx}
-%define api.value.type variant
 
+%define parse.error detailed
+%define api.value.type variant
 %define api.token.constructor
 
 %code
@@ -66,29 +115,23 @@
     // Return the next token.
     parser::symbol_type yylex ()
     {
-      const int SEMICOLON    = 0b1000000000;
-      const int WHITESPACE   = 0b0100000000;
-      const int VARIABLE     = 0b0010000000;
-      const int NUMBER       = 0b0001000000;
-      const int ADD          = 0b0000100000;
-      const int DIV          = 0b0000010000;
-      const int MUL          = 0b0000001000;
-      const int SUB          = 0b0000000100;
-      const int OPEN_PAREN   = 0b0000000010;
-      const int CLOSED_PAREN = 0b0000000001;
+      const int SEMICOLON    = 0b10000000000;
+      const int SET          = 0b01000000000;
+      const int WHITESPACE   = 0b00100000000;
+      const int VARIABLE     = 0b00010000000;
+      const int NUMBER       = 0b00001000000;
+      const int ADD          = 0b00000100000;
+      const int DIV          = 0b00000010000;
+      const int MUL          = 0b00000001000;
+      const int SUB          = 0b00000000100;
+      const int OPEN_PAREN   = 0b00000000010;
+      const int CLOSED_PAREN = 0b00000000001;
 
       static std::string buffer;
       static int read = std::cin.get();
       static int fired;
       
       static auto collect = [&] (int what) {
-        if (read == '\n') {
-          location.line += 1;
-          location.pos = 1;
-        } else {
-          location.pos += 1;
-        }
-
         fired |= what;
         buffer.push_back(read);
         read = std::cin.get();
@@ -166,6 +209,10 @@
           collect(SEMICOLON);
           return parser::make_SEMICOLON(';');
         }
+        case '=': {
+          collect(SET);
+          return parser::make_SET('=');
+        }
       }
 
       /* nothing that looks like operator 
@@ -176,68 +223,116 @@
       if (fired & NUMBER) {
         return parser::make_NUMBER(std::stoi(buffer));
       }
-      /* and we should not get there */
-      error(location, "unexpected");
+
+      /* undefined */
+      collect(0);
+      return parser::make_YYUNDEF();
     }
   }
 }
+
+/* grammar */
 %%
+%nterm <std::string> statement;
+%nterm <int> expr;
+
+%token <std::string> VARIABLE;
+%token <int>         NUMBER;
+
+%token <int>         ADD;
+%token <int>         DIV;
+%token <int>         MUL;          
+%token <int>         SUB;
+
+%token <char>        OPEN_PAREN;
+%token <char>        CLOSED_PAREN;
+%token <char>        SEMICOLON;
+%token <char>        SET;
+
 result:
   %empty
-| result expr SEMICOLON
+| result statement SEMICOLON { 
+    for (auto text_node : $2) {
+      std::cout << text_node;
+    }
+    std::cout << std::endl; 
+  }
+| result error {
+    /* skip everything up to semicolon */
+    using sk = parser::symbol_kind;
+
+    auto should_skip = [&] (parser::symbol_type tok) {
+      return tok.kind() != sk::S_SEMICOLON 
+      &&     tok.kind() != sk::S_YYEOF;
+    };
+    
+    /* it should be yychar or something like that 
+       but it is not available for C++ 
+       so I use some internal details */
+    while (should_skip(yyla)) {
+      parser::symbol_type lookahead = yylex();
+      yyla.move(lookahead);
+    }
+    /* clear the token */
+    yyclearin;
+    yyerrok;
+  }
 ;
 
-expr:
-  VARIABLE SET expr {
-    /* display the result */
-    std::cout << $1 << " = " << $3;
+statement:
+  %empty {
+    $$ = std::string{};
+  }
+| VARIABLE SET expr {
     /* assign */
     ctx->set($1, $3);
-    $$ = $3;
+    $$ = $1 + " = " + color::to_string(color::blue($3));
   }
+| expr {
+    $$ = color::to_string(color::blue($1)); 
+  };
+
+expr:
+    expr ADD expr { $$ = $1 + $3; }
+|   expr SUB expr { $$ = $1 - $3; }
+|   expr MUL expr { $$ = $1 * $3; }
+|   expr DIV expr { $$ = $1 / $3; };
+
+%left ADD;
+%left SUB;
+%left MUL;
+%left DIV;
+
 expr:
   OPEN_PAREN expr CLOSED_PAREN {
     $$ = $2;
-  }
+  };
 
-| state_history statement  { $$ = $1; $$.push_back ($2); }
-;
+expr: 
+  VARIABLE { 
+      try {
+        $$ = ctx->eval($1); 
+      }
+      catch (undefined_variable e) {
+        yy::parser::error(e.message);
+        YYERROR;
+      }
+    }
+| NUMBER { $$ = $1; };
 
-%nterm <evaluation> item%parse-param { ParserContext* context };
-
-%token <std::string> VARIABLE;
-%token <int> NUMBER;
-
-%token <int>  ADD;
-%token <int>  DIV;
-%token <int>  MUL;          
-%token <int>  SUB;
-
-%token <char> OPEN_PAREN;
-%token <char> CLOSED_PAREN;
-%token <char> SEMICOLON;
-
-item:
-  VARIABLE     { $$ = $1;                 }
-| NUMBER       { $$ = std::to_string($1); }
-| ADD          { $$ = std::string("`+`"); }
-| DIV          { $$ = std::string("`/`"); }
-| MUL          { $$ = std::string("`*`"); }          
-| SUB          { $$ = std::string("`-`"); }
-| OPEN_PAREN   { $$ = std::string("`(`"); }
-| CLOSED_PAREN { $$ = std::string("`)`"); };
 %%
 namespace yy
 {
   // Report an error to the user.
-  void parser::error (const location & loc, const std::string& msg)
+  void parser::error (const std::string& msg)
   {
-    throw parse_err(loc, msg);
+    std::cerr << color::red(msg) << std::endl;
   }
 }
 
 int main ()
 {
-  yy::parser parse;
+  evaluation_context ctx;
+  yy::parser parse(&ctx);
   return parse();
 }
