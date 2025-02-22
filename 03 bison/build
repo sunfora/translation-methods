@@ -1,2 +1,4 @@
+#!/usr/bin/bash 
+set -e
 bison simple.yy -o simple.cc
 g++ simple.cc -o simple

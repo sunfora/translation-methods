@@ -136,7 +136,12 @@
         buffer.push_back(read);
         read = std::cin.get();
       };
-     
+      
+      /* test if last was operator (in case we gonna parse number literal with +-) */
+      bool previous_was_operator = fired & ((ADD | DIV | MUL | SUB) & (~ NUMBER));
+      bool previous_was_start = !fired || (fired & (OPEN_PAREN | SET | SEMICOLON));
+      bool treat_as_operator = !previous_was_operator && !previous_was_start;
+      
       /* clear everything from previous use */
       buffer.clear();
       fired = 0;
@@ -186,9 +191,16 @@
             collect(SUB);
           }
           /* but apart from being an operator it can be a number */
-          while (!std::cin.eof() && std::isdigit(read)) {
+          while (
+               !treat_as_operator      /* case like +1 +1, 
+                                          we should tokenize as (+1) (+)(1)
+                                          */
+            && !std::cin.eof() 
+            && std::isdigit(read)
+          ) {
             collect(NUMBER);
           }
+
           if (fired & NUMBER) {
             return parser::make_NUMBER(std::stoi(buffer));
           } else if (fired & ADD) {

@@ -1649,7 +1649,12 @@ switch (yykind)
         buffer.push_back(read);
         read = std::cin.get();
       };
-     
+      
+      /* test if last was operator (in case we gonna parse number literal with +-) */
+      bool previous_was_operator = fired & ((ADD | DIV | MUL | SUB) & (~ NUMBER));
+      bool previous_was_start = !fired || (fired & (OPEN_PAREN | SET | SEMICOLON));
+      bool treat_as_operator = !previous_was_operator && !previous_was_start;
+      
       /* clear everything from previous use */
       buffer.clear();
       fired = 0;
@@ -1699,9 +1704,16 @@ switch (yykind)
             collect(SUB);
           }
           /* but apart from being an operator it can be a number */
-          while (!std::cin.eof() && std::isdigit(read)) {
+          while (
+               !treat_as_operator      /* case like +1 +1, 
+                                          we should tokenize as (+1) (+)(1)
+                                          */
+            && !std::cin.eof() 
+            && std::isdigit(read)
+          ) {
             collect(NUMBER);
           }
+
           if (fired & NUMBER) {
             return parser::make_NUMBER(std::stoi(buffer));
           } else if (fired & ADD) {
@@ -1743,7 +1755,7 @@ switch (yykind)
     }
   }
 
-#line 1747 "simple.cc"
+#line 1759 "simple.cc"
 
 
 #ifndef YY_
@@ -1816,7 +1828,7 @@ switch (yykind)
 #define YYRECOVERING()  (!!yyerrstatus_)
 
 namespace yy {
-#line 1820 "simple.cc"
+#line 1832 "simple.cc"
 
   /// Build a parser object.
   parser::parser (evaluation_context * ctx_yyarg)
@@ -2301,18 +2313,18 @@ namespace yy {
           switch (yyn)
             {
   case 3: // result: result statement SEMICOLON
-#line 254 "simple.yy"
+#line 266 "simple.yy"
                              { 
     for (auto text_node : yystack_[1].value.as < std::string > ()) {
       std::cout << text_node;
     }
     std::cout << std::endl; 
   }
-#line 2312 "simple.cc"
+#line 2324 "simple.cc"
     break;
 
   case 4: // result: result error
-#line 260 "simple.yy"
+#line 272 "simple.yy"
                {
     /* skip everything up to semicolon */
     using sk = parser::symbol_kind;
@@ -2333,69 +2345,69 @@ namespace yy {
     yyclearin;
     yyerrok;
   }
-#line 2337 "simple.cc"
+#line 2349 "simple.cc"
     break;
 
   case 5: // statement: %empty
-#line 283 "simple.yy"
+#line 295 "simple.yy"
          {
     yylhs.value.as < std::string > () = std::string{};
   }
-#line 2345 "simple.cc"
+#line 2357 "simple.cc"
     break;
 
   case 6: // statement: VARIABLE SET expr
-#line 286 "simple.yy"
+#line 298 "simple.yy"
                     {
     /* assign */
     ctx->set(yystack_[2].value.as < std::string > (), yystack_[0].value.as < int > ());
     yylhs.value.as < std::string > () = yystack_[2].value.as < std::string > () + " = " + color::to_string(color::blue(yystack_[0].value.as < int > ()));
   }
-#line 2355 "simple.cc"
+#line 2367 "simple.cc"
     break;
 
   case 7: // statement: expr
-#line 291 "simple.yy"
+#line 303 "simple.yy"
        {
     yylhs.value.as < std::string > () = color::to_string(color::blue(yystack_[0].value.as < int > ())); 
   }
-#line 2363 "simple.cc"
-    break;
-
-  case 8: // expr: expr ADD expr
-#line 296 "simple.yy"
-                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () + yystack_[0].value.as < int > (); }
-#line 2369 "simple.cc"
-    break;
-
-  case 9: // expr: expr SUB expr
-#line 297 "simple.yy"
-                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () - yystack_[0].value.as < int > (); }
 #line 2375 "simple.cc"
     break;
 
-  case 10: // expr: expr MUL expr
-#line 298 "simple.yy"
-                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () * yystack_[0].value.as < int > (); }
+  case 8: // expr: expr ADD expr
+#line 308 "simple.yy"
+                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () + yystack_[0].value.as < int > (); }
 #line 2381 "simple.cc"
     break;
 
-  case 11: // expr: expr DIV expr
-#line 299 "simple.yy"
-                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () / yystack_[0].value.as < int > (); }
+  case 9: // expr: expr SUB expr
+#line 309 "simple.yy"
+                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () - yystack_[0].value.as < int > (); }
 #line 2387 "simple.cc"
     break;
 
+  case 10: // expr: expr MUL expr
+#line 310 "simple.yy"
+                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () * yystack_[0].value.as < int > (); }
+#line 2393 "simple.cc"
+    break;
+
+  case 11: // expr: expr DIV expr
+#line 311 "simple.yy"
+                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () / yystack_[0].value.as < int > (); }
+#line 2399 "simple.cc"
+    break;
+
   case 12: // expr: OPEN_PAREN expr CLOSED_PAREN
-#line 307 "simple.yy"
+#line 319 "simple.yy"
                                {
     yylhs.value.as < int > () = yystack_[1].value.as < int > ();
   }
-#line 2395 "simple.cc"
+#line 2407 "simple.cc"
     break;
 
   case 13: // expr: VARIABLE
-#line 312 "simple.yy"
+#line 324 "simple.yy"
            { 
       try {
         yylhs.value.as < int > () = ctx->eval(yystack_[0].value.as < std::string > ()); 
@@ -2405,17 +2417,17 @@ namespace yy {
         YYERROR;
       }
     }
-#line 2409 "simple.cc"
+#line 2421 "simple.cc"
     break;
 
   case 14: // expr: NUMBER
-#line 321 "simple.yy"
+#line 333 "simple.yy"
          { yylhs.value.as < int > () = yystack_[0].value.as < int > (); }
-#line 2415 "simple.cc"
+#line 2427 "simple.cc"
     break;
 
 
-#line 2419 "simple.cc"
+#line 2431 "simple.cc"
 
             default:
               break;
@@ -2808,8 +2820,8 @@ namespace yy {
   const short
   parser::yyrline_[] =
   {
-       0,   253,   253,   254,   260,   283,   286,   291,   296,   297,
-     298,   299,   307,   312,   321
+       0,   265,   265,   266,   272,   295,   298,   303,   308,   309,
+     310,   311,   319,   324,   333
   };
 
   void
@@ -2841,9 +2853,9 @@ namespace yy {
 
 
 } // yy
-#line 2845 "simple.cc"
+#line 2857 "simple.cc"
 
-#line 323 "simple.yy"
+#line 335 "simple.yy"
 
 namespace yy
 {

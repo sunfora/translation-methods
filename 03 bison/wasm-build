@@ -1,0 +1,4 @@
+#!usr/bin/bash
+set -e
+bison simple.yy -o simple.cc
+emcc -s FORCE_FILESYSTEM -s ASYNCIFY --js-library=emscripten-pty.js -s NO_DISABLE_EXCEPTION_CATCHING -o example.mjs simple.cc
