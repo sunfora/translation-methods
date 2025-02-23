@@ -17,9 +17,6 @@ foreach my $url (@values) {
   if ($url =~ m{^[a-zA-Z]+://(?:[^@]*@)?(?<host>[^/:?#]+)}) {
     # URL with scheme
     $host = $+{host}
-  } elsif ($url =~ m{^(?:[^@]*@)?(?<host>[^/:?#]+)}) {
-    # URL without scheme
-    $host = $+{host}
   }
   $host =~ s/^\[(.*)\]$/$1/; 
   $result{$host} = 1 if length($host);
