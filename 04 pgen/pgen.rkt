@@ -20,75 +20,6 @@
 ;; управляющие таблички и всё такое
 ;; но я дурачок и всё зафакапил как всегда, так что забейте
 ;;
-;;
-'{
-  ;; токены у нас будет обязан заполнять лексер
-  ;; лексер должен юзать по идее интерфейс такой:
-  ;;
-  ;; у парсера есть правила, парсер знает что вот first
-  ;; от E это набор токенов
-  ;;
-  ;; он эти токены создаёт и передаёт в лексер
-  ;; если парсер не уверен по какому правилу раскрывать
-  ;; токены прилетают (чтобы наследуемость соответственно отдаёт
-  ;; ну например там будет что-то вроде
-  ;; '((symbol "(") (number _))
-  ;;
-  ;; единственное отличие, что наследуемость для токенов будет немного отличаться
-  ;; от наследуемости для нетерминалов
-  ;;
-  ;; в случае нетерминалов мы сначала создаём и потом углубляемся
-  ;;
-  ;; а в случае токенов нам сначала дают и мы проверяем что прибывший имеет либо
-  ;; пустые значения на месте пропусков и тогда мы их заполняем
-  ;; либо 
-  ;;
-  ;; единственное что он знает, что оно mutable
-  ;; и что это struct с определенными полями
-  [tokens (paren (kind)) 
-          (number (value)) 
-          (variable (name value))]
-  (lexer my-lexer-defined-elsewhere-or-right-here-as-generator)
-  ;; грамматику мы сделаем чуточку более вменяемой
-  ;; мы сюда добавим всякие крутые штуки 
-  ;; типа геттеров и сеттеров с 'вменяемым' синтаксисом
-  [nterm (result (type-check value))
-         (expr (type-check priority value))
-         (cont (arg type-check priority value))]
-  [grammar
-    (result
-      (number?) {
-        [(expr-3 [$$.type-check] 3) ^{($$.value [$1.value])}]
-      })
-    (expr
-     (_ 0) {
-        [(paren "(") expr (paren ")") ^{($$.value [$1.value])}]
-        [variable ^{($$.value 
-                      (let ((result (read)))
-                        (if ([$$.type-check] result)
-                          result
-                          (error 'type-error))))}]
-        [number ^{($$.value [$1.value])}]
-     }
-     () {
-       [(expr [$$.type-check]
-              (- [$$.priority] 1))
-        (cont [$1.value]
-              [$$.type-check]
-              [$$.priority])
-        ^{($$.value [$2.value])}]
-     })
-    (cont
-      () {
-        [(operator [$$.priority]) 
-         (expr [$$.type-check]
-               (- [$$.priority] 1))                                  
-         (cont ([$1.value] [$$.arg] [$2.value])
-               [$$.type-check]
-               [$$.priority])]
-         ^{($$.value [$3.value])}
-      })]
-
 
 '{
   [tokens (operator [[priority :: 1 .. 3] action])
@@ -98,19 +29,19 @@
   [nterms (expr     [[priority :: 0 .. 3] value])
           (cont     [acum [priority :: 1 .. 3] value])]
   
-  [grammar
-    [(expr 0) {
-      (paren "(") (expr 3) (paren ")")
-      ^{$$.value $2:value}
+  [grammar (expr 3 .value)
+    [(expr 0 value) {
+      (paren "(") (expr 3 .value) (paren ")")
     }]
-    [(expr 0) {
-      (number)
-      ^{$$.value $1:value}
+    [(expr 0 value) {
+      (number .value)
     }]
-    [(expr 0) {
+    [(expr 0 value) {
       (variable)
-      ^{(display "found variable! yey!")
-        ($$.value (read))}
+      (ε (begin 
+           (display "found variable! yey!")
+           (read))
+         .value)
     }]
 
     [(expr .i value) {
@@ -120,89 +51,148 @@
     [(cont .acc .i r) {
      (operator i .a) (expr (- i 1) .e) (cont (a acc e) i .r)
     }]
-    [(cont .v _ v) {
-    }]
+    [(cont .v _ v) {}]
   ]
 }
 
+;; потом мы должны убрать всё что не является параметрами
+;; параметры с непараметрами мешаться не должны иначе жопа
+;;
+;; ну в том смысле что параметры грамматики могут участвовать 
+;; в непараметрах
+;;
+;; а непараметры в параметрах грамматики не должны быть
+;;
+;; и надо собрать все уникальные значения
+;;
+;; мы начинаем с самой топовой формы
+;; кладём её в хешмапу
+;;
+;; и идём пытаемся заматчить все правила что существуют
+;; мы матчим примерно так: 
+;;    1. если у нас есть значение то мы должны мэтчить точку
+;;       либо мы видим штуку которая метчится по значению
+;;
+;;    2. если у нас есть точка то мы должны метчить значение
+;; 
+;; плейсхолдер (типа не важно) подходит и тем и тем
+;; если у нас есть значение, то мы создаём новое правило с этой фигнёй
+;; на месте плейсхолдера
+;;
+;; если у нас точка, то мы генерируем все виды правил
+;;
+;; вычисления идут слева на право
+;; сверху вниз, ну и так далее
+;;
+'[grammar (expr 3 _)
+  [(expr 0 _) {
+    (paren "(") (expr 3 _) (paren ")")
+  }]
+  [(expr 0 _) {
+    (number _)
+  }]
+  [(expr 0 _) {
+    (variable _ _)
+    (ε _ _)
+  }]
+  [(expr .i _) {
+   (expr (- i 1) _) (cont _ i _)
+  }]
 
-;; это должно превратиться во что-то такое:
+  [(cont _ .i _) {
+   (operator i _) (expr (- i 1) _) (cont _ i _)
+  }]
+  [(cont _ _ _) {(ε _ _)}]
+]
+
+;; то есть что-то такое получается
 '{
-  ;; мы должны завести кучу всякого говна
-  (struct get-attr ())
-  ;; токены
-  (struct token () #:transparent #:mutable)
-  (struct symbol token (value) #:transparent #:mutable)
-  (struct variable token (name value) #:transparent #:mutable)
-  (struct result (type value) #:transparent #:mutable)
-  (struct expr (type value) #:transparent #:mutable)
-  (struct symbol (name value) #:transparent #:mutable)
-  (struct number (value) #:transparent #:mutable)
-
-  ;; далее для каждого правила мы должны сгенерировать соответствующую функцию
-  ;; внутри каждой функции мы должны определить переменные и геттеры сеттеры
-  ;; всё будем делать с сайд-эффектами, потому что чот вроде проще
-  (define (parse-result/1 $$)
-    ;; сгенерируем все остальные штуки
-    (define $1 (expr '() '()))
-    (define $2 (symbol '()))
-    (define $3 (
-    (define ($$.type [value (get-attr)])
-      (if (get-attr? value)
-        ;; pretend to be a getter
-        (result-type $$)
-        ;; pretend to be a setter
-        (set-result-type! $$ value)))
-    ;; дальше мы должны засунуть наш код
-
-
-  (result (type value)
-     ([{^ ($$.type  "int")} (expr [$$.type]) #\+ {^ print-something} result
-        ;; or you can do action inline
-        {^ ($$.value (+ [$1.value] [$3.value]))}]
-       #:where 
-         ^print-something (display $2)))
-  (expr (type value)
-    ([[variable ^read-var]
-       {^ ($$.value $1.value)}]
-      #:where
-        ^read-var (begin (display "found a variable, give a value:") 
-                         ($1.value (read))))
-    ([[number]
-      {^ ($$.value $1.value)}]))
+  (expr 3 _)
+  (expr 2 _)
+  (expr 1 _)
+  (expr 0 _)
+  (paren "(")
+  (paren ")")
+  (number _)
+  (variable _ _)
+  (ε _ _)
+  (cont _ 1 _)
+  (cont _ 2 _)
+  (cont _ 3 _)
 }
 
+;; нагенерировать всевозможные вариации правил
+;;
+;; проверить что получившееся говно является LL(1)
+;; надо посчитать first и follow
 
+;; в общем пока не важно завтра сделаем
 
-;; Macro to generate `(set-age! p v)` -> `(set-person-age! p v)`
-(require (for-syntax racket/syntax))
+;; если есть какие-то проблемы то выводим это автору грамматики
+;; если нет приступаем к генерации
 
-(define-syntax (set-attr! ctx)
-  (syntax-case (field struct) value
-    (format-id #'field "set-~a-~a" #'field
-  ((string->symbol (string-append "set-" 
-                                  (symbol->string (object-name struct))
-                                  "-"
-                                  (symbol->string 'field)
-     
-                                "!")) struct value))
+;; для этого опять таки идём с самого верху (по обычным правилам!)
+;; и начинаем генерировать соответствующие функции
+;; будем просто нумеровать правила
+;; и генерировать типа
+;; 
+;; (parse-expr/1 ...)
+;; (parse-expr/2 ...)
+;;
+;; в принципе кажись я могу написать первый парсер 
+;; (без вычисления грамматики) перед вторым с вычислением
+;;
+;; и уже можно будет потихоньку закрывать лабу
+;;
+;; типа начинаем мы со штуки есть (expr 3 _) 
+;; 
+;; мы должны посмотреть чо там за правило
+;; там будет что-то вроде 
+;;
+;; (expr 2 _) (cont _ 3 _)
+;; 
+;; мы пишем чот вот такое
+;; (define (parse in)
+;;    (define $$ (expr 3 _))
+;;    (parse-expr/1 $$))
+;;
+;; (define (parse-expr/1 $$)
+;;   (define $1 (expr 2 _))
+;;   (define $2 (cont _ 3 _))
+;;   (parse-expr/2 $1)
+;;   (set-cont-arg! $2 (expr-value $1))
+;;   (parse-cont/1 $2)
+;;   (set-expr-value! $$ (cont-value $2)))
+;;
+;; (define (parse-expr/2 $$)
+;; 
+;;  
+;;
+;; (define parse-expr-3 
+;;      ...)
+;;
+;; ну и так далее
+;;
+;; ну и всё вроде
+;; надо еще правила с токенами разобрать или чот такое
+;;
+;; теперь надо просто это сделать
+;; потом добавить генерацию правил 
+;; и сгенерировать две домашки
+;;
+;; о боже
+;;
+;; ну да ладно
+;; поехали
 
-(define-syntax (hyphen-define/ok1 stx)
-    (syntax-case stx ()
-      [(_ a b (args ...) body0 body ...)
-       (syntax-case (syntax-format "~s-~s" #'a #'b)
-                    ()
-         [name #'(define (name args ...)
-                   body0 body ...)])]))
+(struct parser-token () #:transparent
+                        #:mutable)
+(require (for-syntax syntax/free-vars))
+(define-syntax (test stx)
+  (define x (local-expand stx 'expression #f))
+  (display (free-vars x))
+  #'(display "ok"))
 
-;; Macro to get field `(age p)` -> `(person-age p)`
-(define-syntax-rule (field struct)
-  ((string->symbol (string-append (symbol->string 'struct) "-" (symbol->string 'field))) struct))
+(struct parser-thunk (calc )
 
-(define (parse-result-1)
-  (define $$ (result "int" '()))
-  (set-result-type! 
-
-(define (skip-actions
-
-(define (calc-first grammar)
+  (free-vars
