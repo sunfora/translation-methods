@@ -7,6 +7,8 @@
 (struct Op1 node  ()         #:transparent)
 (struct Op2 node  ()         #:transparent)
 (struct Op3 node  ()         #:transparent)
+(struct Op4 node  ()         #:transparent)
+(struct Op5 node  ()         #:transparent)
 (struct Pr  node  ()         #:transparent)
 (struct E1  node  ()         #:transparent)
 (struct C1  node  ()         #:transparent)
@@ -14,6 +16,10 @@
 (struct C2  node  ()         #:transparent)
 (struct E3  node  ()         #:transparent)
 (struct C3  node  ()         #:transparent)
+(struct E4  node  ()         #:transparent)
+(struct C4  node  ()         #:transparent)
+(struct E5  node  ()         #:transparent)
+(struct C5  node  ()         #:transparent)
 
 (define (parser in)
   
@@ -51,6 +57,14 @@
     (match cur
       [(operation _ _ 3) (Op3 (take))]
       [_ (report "operator with prec 3" cur)]))
+  (define (op4)
+    (match cur
+      [(operation _ _ 4) (Op4 (take))]
+      [_ (report "operator with prec 3" cur)]))
+  (define (op5)
+    (match cur
+      [(operation _ _ 5) (Op5 (take))]
+      [_ (report "operator with prec 3" cur)]))
   (define (pr)
     (match cur
       [(operation _ _ 0) (Pr (list (un) (pr)))]
@@ -75,8 +89,20 @@
     (match cur
       [(operation _ _ 3) (C3 (list (op3) (e3)))]
       [_ (C3 null)]))
+  (define (e4)
+    (E4 (list (e3) (c4))))
+  (define (c4)
+    (match cur
+      [(operation _ _ 4) (C4 (list (op4) (e4)))]
+      [_ (C4 null)]))
+  (define (e5)
+    (E5 (list (e4) (c5))))
+  (define (c5)
+    (match cur
+      [(operation _ _ 5) (C5 (list (op5) (e5)))]
+      [_ (C5 null)]))
   (define (e)
-    (E (e3)))
+    (E (e5)))
   (let [(result (e))]
     (expect end-of-input?)
     result))

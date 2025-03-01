@@ -126,8 +126,20 @@
 @examples[ 
   #:label "Пример исполнения:"
   #:eval lex-eval
-  (define in (open-input-string "a & (b + c)"))
+  (code:comment "modification")
+  (define in (open-input-string "some-random-variable & (other + __snake__)"))
   (define next-lexeme (lexer in))
+  (next-lexeme)
+  (next-lexeme)
+  (next-lexeme)
+  (next-lexeme)
+  (next-lexeme)
+  (next-lexeme)
+  (next-lexeme)
+  (next-lexeme)
+  (define in (open-input-string "ababcaba & (badacabad + cdwdW * dfeQfwe)"))
+  (define next-lexeme (lexer in))
+  (next-lexeme)
   (next-lexeme)
   (next-lexeme)
   (next-lexeme)
@@ -187,10 +199,13 @@
 
   (define (draw-tree tree)
       (define (term-text txt)
+        (define txt-pict (text txt))
               (cc-superimpose
-                (filled-rectangle 30 30 #:color "white" 
-                         #:border-color "blue")
-                (text txt)))
+                (filled-rectangle (+ (pict-width txt-pict) 20) 
+                                  (+ (pict-height txt-pict) 10) 
+                                  #:color "white" 
+                                  #:border-color "blue")
+                txt-pict))
       (define (nont-text txt)
               (cc-superimpose
                 (disk 30   #:color "white" 
@@ -246,9 +261,13 @@
   (visual "!!!!a & b")
   (visual "b&!!!!a&c")
   (code:comment "")
+  (code:comment "несуществующий (существующий после модификации) оператор")
+  (code:comment "")
+  (visual "x^var | !a & (b + c) * dubious * epr + snak")
+  (code:comment "")
   (code:comment "несуществующий оператор")
   (code:comment "")
-  (eval:error (parse-string "a & (b + c)"))
+  (eval:error (visual "dubious % epr + snak"))
   (code:comment "")
   (code:comment "много разных операторов и скобок")
   (code:comment "")
