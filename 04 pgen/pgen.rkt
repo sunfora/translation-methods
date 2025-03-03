@@ -1,198 +1,447 @@
 #lang racket
+(require (for-syntax racket/syntax))
+(require (for-syntax racket/struct-info))
+(require (for-syntax racket/list))
+(require (for-syntax racket/dict))
+(require (for-syntax racket/set))
+(require (for-syntax racket/match))
+(require (for-syntax racket/sequence))
+(require (for-syntax racket/bool))
+(require racket/match)
+(require racket/provide-syntax)
 
-;;
-;; TODO:
-;; 1. делаем first follow для грамматики
-;;    верифицируем на примере из первой лабы
-;; 2. придумываем запись для нашего парсера
-;; 3. будем делать LL(1) грамматику (10 баллов)
-;;    с пробросом контекста 
-;;    (наследуемыми + синтезируемыми атрибутами)  (10 баллов)
-;;                                                (10 баллов)
-;; 4. генерируем (возможно с помощью макроса результат)
-;; 5.0 делаем калькулятор (но это моя вторая лаба)  (10 баллов)
-;; 5.1 делаем первую лабу                           (5 баллов)
-;;
-;; итого вроде ожидаю чот на уровне 45 баллов
-;; и надо будет написать report в котором всё это я покажу
-;;
-;; времени не очень много, я хотел бы конечно потыкать LALR и генерить бинарники какие-нибудь
-;; управляющие таблички и всё такое
-;; но я дурачок и всё зафакапил как всегда, так что забейте
-;;
+(begin-for-syntax
+  (define (get-pred stx)
+    (list-ref 
+      (extract-struct-info (syntax-local-value stx))
+      2))
+  (define (get-fields stx)
+    (define (flds stx)
+      (struct-field-info-list 
+              (syntax-local-value stx)))
+    (let loop ([cur stx]
+               [fields '()])
+      (if (eq? #t cur)
+        (reverse fields)
+        (loop (get-super cur) (append (flds cur) fields)))))
+  (define (get-setters stx)
+    (reverse
+      (list-ref  
+        (extract-struct-info (syntax-local-value stx))
+        4)))
+  (define (get-getters stx)
+    (reverse
+      (list-ref  
+        (extract-struct-info (syntax-local-value stx))
+        3)))
+  (define (get-super stx)
+    (list-ref
+      (extract-struct-info (syntax-local-value stx))
+      5))
 
-'{
-  [tokens (operator [[priority :: 1 .. 3] action])
-          (variable [name value])
-          (number   [value])
-          (paren    [kind :: '("(" ")")])]
-  [nterms (expr     [[priority :: 0 .. 3] value])
-          (cont     [acum [priority :: 1 .. 3] value])]
-  
-  [grammar (expr 3 .value)
-    [(expr 0 value) {
-      (paren "(") (expr 3 .value) (paren ")")
-    }]
-    [(expr 0 value) {
-      (number .value)
-    }]
-    [(expr 0 value) {
-      (variable)
-      (ε (begin 
-           (display "found variable! yey!")
-           (read))
-         .value)
-    }]
+  (define (symbol-ref x i)
+    (string-ref (symbol->string x) 0))
 
-    [(expr .i value) {
-     (expr (- i 1) .v) (cont v i .value)
-    }]
+  (define (is-dotted? stx)
+    (and (identifier? stx)
+         (eq? (symbol-ref (syntax->datum stx) 0) #\.))))
 
-    [(cont .acc .i r) {
-     (operator i .a) (expr (- i 1) .e) (cont (a acc e) i .r)
-    }]
-    [(cont .v _ v) {}]
-  ]
-}
+(define-syntax (construct-with stx)
+  (syntax-case stx ()
+    [(_ st-name value)
+     #`(st-name #,@(for/list ([i (get-fields #'st-name)])
+                     #'value))]))
 
-;; потом мы должны убрать всё что не является параметрами
-;; параметры с непараметрами мешаться не должны иначе жопа
-;;
-;; ну в том смысле что параметры грамматики могут участвовать 
-;; в непараметрах
-;;
-;; а непараметры в параметрах грамматики не должны быть
-;;
-;; и надо собрать все уникальные значения
-;;
-;; мы начинаем с самой топовой формы
-;; кладём её в хешмапу
-;;
-;; и идём пытаемся заматчить все правила что существуют
-;; мы матчим примерно так: 
-;;    1. если у нас есть значение то мы должны мэтчить точку
-;;       либо мы видим штуку которая метчится по значению
-;;
-;;    2. если у нас есть точка то мы должны метчить значение
-;; 
-;; плейсхолдер (типа не важно) подходит и тем и тем
-;; если у нас есть значение, то мы создаём новое правило с этой фигнёй
-;; на месте плейсхолдера
-;;
-;; если у нас точка, то мы генерируем все виды правил
-;;
-;; вычисления идут слева на право
-;; сверху вниз, ну и так далее
-;;
-'[grammar (expr 3 _)
-  [(expr 0 _) {
-    (paren "(") (expr 3 _) (paren ")")
-  }]
-  [(expr 0 _) {
-    (number _)
-  }]
-  [(expr 0 _) {
-    (variable _ _)
-    (ε _ _)
-  }]
-  [(expr .i _) {
-   (expr (- i 1) _) (cont _ i _)
-  }]
+(define-for-syntax (grab-from-form pred?)
+  (λ (stx)
+    (syntax-case stx ()
+      [(name exprs ...)
+       (for/list ([expr  (syntax-e  #'(exprs ...))]
+                  [field (get-fields     #'name)]
+                  [get   (get-getters    #'name)]
+                  [set   (get-setters    #'name)]
+                  #:when (pred? expr))
+         (list #'name field get set expr))])))
 
-  [(cont _ .i _) {
-   (operator i _) (expr (- i 1) _) (cont _ i _)
-  }]
-  [(cont _ _ _) {(ε _ _)}]
-]
+(define-for-syntax (grab-with-ctors pred?)
+  (λ (stx ctors)
+    (with-syntax ([(forms ...) stx])
+       (append* (map (λ ($ forms) (map (λ (x) (cons $ x)) forms))
+                   (syntax-e ctors)
+                   (map (grab-from-form pred?)
+                        (syntax-e #'(forms ...))))))))
 
-;; то есть что-то такое получается
-'{
-  (expr 3 _)
-  (expr 2 _)
-  (expr 1 _)
-  (expr 0 _)
-  (paren "(")
-  (paren ")")
-  (number _)
-  (variable _ _)
-  (ε _ _)
-  (cont _ 1 _)
-  (cont _ 2 _)
-  (cont _ 3 _)
-}
+(define-syntax (with-syntax-lets stx)
+  (define (undot dotted)
+    (let* ([datum    (syntax->datum dotted)]
+           [str      (symbol->string datum)]
+           [undot    (substring str 1)])
+      (format-id dotted "~a" undot)))
+  (define (force-dotted place name field get set expr)
+    (with-syntax ([id (undot expr)]
+                  [get get]
+                  [place place])
+      #'[id (λ (_) (syntax (force (get place))))]))
+  (define (gen-lambdas stx ctors)
+      (map (λ (j) (apply force-dotted j)) 
+           ((grab-with-ctors is-dotted?) stx ctors)))
+  (define (gen-starred stx ctors)
+    (define (star place)
+      (λ (field)
+        (format-id place "~a-~a*" place field)))
 
-;; нагенерировать всевозможные вариации правил
-;;
-;; проверить что получившееся говно является LL(1)
-;; надо посчитать first и follow
+    (with-syntax* ([(ctor ...) ctors]
+                   [((form-name _ ...) ...) stx]
+                   [(part ...) #'((form-name ctor) ...)])
+      (flatten
+        (for/list ([j (syntax-e #'(part ...))])
+          (with-syntax* ([(form-name place) j])
+              (define fields  (get-fields  #'form-name))
+              (define getters (get-getters #'form-name))
+              (define starred (map (star #'place) fields))
+              (list
+                (with-syntax ([(get ...) getters]
+                              [starred-place (format-id #'place "~a*" #'place)])
+                  #'[starred-place 
+                      (λ (_) (syntax (form-name (force (get place)) ...)))])
+                (for/list ([id starred]
+                           [get getters])
+                  (with-syntax ([id id] [get get])
+                    #'[id (λ (_) (syntax (force (get place))))]))))))))
+  (syntax-case stx ()
+    [(_ [head [form ...]] 
+        [head-ctor [form-ctor ...]] 
+        body ...)
+     (with-syntax* ([forms #'(head form ...)]
+                    [ctors #'(head-ctor form-ctor ...)]
+                    [(dotted ...) (gen-lambdas #'forms #'ctors)]
+                    [(starred ...) (gen-starred #'forms #'ctors)])
+       #'(let-syntax (dotted  ...
+                      starred ...)
+             body ...))]))
 
-;; в общем пока не важно завтра сделаем
+(define-syntax (with-delayed stx)
+  (define (not-dotted? x) (not (is-dotted? x)))
+  (define (delayed-set place name field get set expr)
+    #`(#,set #,place (delay #,expr)))
+  (define (gen-sets stx ctors)
+    (datum->syntax 
+      stx 
+      (map (λ (j) (apply delayed-set j)) 
+           ((grab-with-ctors not-dotted?) stx ctors))))
+  (syntax-case stx ()
+    [(_ [head [form ...]] 
+        [head-ctor [form-ctor ...]] 
+        body ...)
+     (with-syntax* ([forms #'(head form ...)]
+                    [ctors #'(head-ctor form-ctor ...)]
+                    [sets (gen-sets #'forms #'ctors)])
+       #'(begin 
+             (~@ . sets)
+             body ...))]))
 
-;; если есть какие-то проблемы то выводим это автору грамматики
-;; если нет приступаем к генерации
+(define-syntax-rule (with-constructors [head [(st-name _ ...) ...]] 
+                                       [head-ctor [form-ctor ...]] 
+                                       body ...)
+  (let* ([form-ctor (construct-with st-name '())] ...)
+    body ...))
 
-;; для этого опять таки идём с самого верху (по обычным правилам!)
-;; и начинаем генерировать соответствующие функции
-;; будем просто нумеровать правила
-;; и генерировать типа
-;; 
-;; (parse-expr/1 ...)
-;; (parse-expr/2 ...)
-;;
-;; в принципе кажись я могу написать первый парсер 
-;; (без вычисления грамматики) перед вторым с вычислением
-;;
-;; и уже можно будет потихоньку закрывать лабу
-;;
-;; типа начинаем мы со штуки есть (expr 3 _) 
-;; 
-;; мы должны посмотреть чо там за правило
-;; там будет что-то вроде 
-;;
-;; (expr 2 _) (cont _ 3 _)
-;; 
-;; мы пишем чот вот такое
-;; (define (parse in)
-;;    (define $$ (expr 3 _))
-;;    (parse-expr/1 $$))
-;;
-;; (define (parse-expr/1 $$)
-;;   (define $1 (expr 2 _))
-;;   (define $2 (cont _ 3 _))
-;;   (parse-expr/2 $1)
-;;   (set-cont-arg! $2 (expr-value $1))
-;;   (parse-cont/1 $2)
-;;   (set-expr-value! $$ (cont-value $2)))
-;;
-;; (define (parse-expr/2 $$)
-;; 
-;;  
-;;
-;; (define parse-expr-3 
-;;      ...)
-;;
-;; ну и так далее
-;;
-;; ну и всё вроде
-;; надо еще правила с токенами разобрать или чот такое
-;;
-;; теперь надо просто это сделать
-;; потом добавить генерацию правил 
-;; и сгенерировать две домашки
-;;
-;; о боже
-;;
-;; ну да ладно
-;; поехали
 
-(struct parser-token () #:transparent
-                        #:mutable)
-(require (for-syntax syntax/free-vars))
-(define-syntax (test stx)
-  (define x (local-expand stx 'expression #f))
-  (display (free-vars x))
-  #'(display "ok"))
+(define-syntax-rule (surround-body rule ctors body ...)
+  (with-constructors rule ctors
+    (with-syntax-lets rule ctors 
+       (with-delayed  rule ctors
+                      body ...))))
 
-(struct parser-thunk (calc )
+(define-syntax-rule (syntax-displayln form)
+  (displayln (expand-once #'form)))
+(define-syntax-rule (for-syntax-displayln form ...)
+  (let-syntax ([x (λ (stx)
+                    (displayln form) ...
+                    #'(void))])
+    x))
 
-  (free-vars
+
+(define-for-syntax (make-resolver donate)
+  (λ (qv)
+    (define stx (datum->syntax donate qv))
+    (let loop ([cur stx]
+               [next (get-super stx)])
+      (if (eq? next #t)
+        (syntax->datum cur)
+        (loop next (get-super next))))))
+
+(define-for-syntax (grammar->rules grammar)
+  (map append
+    (syntax->datum
+     (syntax-case grammar ()                                      
+       [([(sth _ ... ) [(stf _ ...) ...]] ...)
+        #'([sth [stf ...]] ...)]))
+    (map list (syntax-e grammar))))
+
+(define-for-syntax (compute-first kind rules)
+  (define changed? #f)
+  (define FIRST (make-hash))
+  (define (ref! nterm)
+    (dict-ref! FIRST nterm (mutable-set)))
+  (define (upd! nterm v)
+    (define n-set (ref! nterm))
+    (for ([m v])
+      (when (not (set-member? n-set m))
+        (set! changed? #t)
+        (set-add! n-set m))))
+
+  (define (first list-of-symbols)
+    (let/ec return
+      (when (empty? list-of-symbols)
+        (return (set 'ε)))
+      (match-let ([(list a rest ...) list-of-symbols])
+        (define set-a
+            (case (kind a)
+              [(token) (set a)]
+              [(nterm) (ref! a)]
+              [else (raise-syntax-error 
+                      #f 
+                      "unexpected kind")]))
+        (if (set-member? set-a 'ε)
+          (set-union (first rest) set-a)
+          set-a))))
+
+  (let compute []
+    (set! changed? #f)
+    (for ([rule rules])
+      (match-let ([(list A a) rule])
+        (upd! A (first a))))
+    (when changed?
+      (compute)))
+  (for ([(k v) FIRST])
+    (dict-set! FIRST k (for/set ([i v]) i)))
+  first)
+
+(define-for-syntax (compute-follow start first kind rules)
+  (define changed? #f)
+  (define FOLLOW (make-hash))
+  (define (ref! nterm)
+    (dict-ref! FOLLOW nterm (mutable-set)))
+  (define (upd! nterm v)
+    (define n-set (ref! nterm))
+    (for ([m v]
+          #:unless (eq? m 'ε))
+      (when (not (set-member? n-set m))
+        (set! changed? #t)
+        (set-add! n-set m))))
+
+  (define follow ref!)
+
+  (define (nterm? B)
+    (eq? (kind B) 'nterm))
+
+  (upd! start (set '$))
+  (let compute []
+    (set! changed? #f)
+    (for ([rule rules])
+      (match-let ([(list A α) rule])
+        (for ([(B γ) (with-tail α)]
+              #:when (nterm? B))
+          
+          (let* ([first-γ   (first γ)]
+                 [has-ε?    (set-member? first-γ 'ε)])
+            (upd! B first-γ)
+            (when has-ε?
+              (upd! B (follow A)))))))
+    (when changed?
+      (compute)))
+  (for ([(k v) FOLLOW])
+    (dict-set! FOLLOW k (for/set ([i v]) i)))
+  follow)
+
+
+(define-for-syntax (with-tail lst)
+  (make-do-sequence
+   (lambda ()
+     (initiate-sequence
+      #:pos->element (lambda (s) (values (car s) (cdr s)))
+      #:next-pos cdr
+      #:init-pos lst
+      #:continue-with-pos? pair?))))
+
+(define-syntax (make-parser stx)
+  (syntax-case stx ()
+    [(_ {
+        [lexer lexer-name/body]
+        [grammar #:start-with start
+           grammar-rule ...]
+       })
+     (begin 
+       (unless (eq? (syntax->datum #'grammar) 'grammar)
+         (raise-syntax-error #f "expected literal `grammar`" #'grammar))
+       (unless (eq? (syntax->datum #'lexer) 'lexer)
+         (raise-syntax-error #f "expected literal `lexer`"   #'lexer))
+       (let* ([resolver (make-resolver   stx)]
+              [rules*   (grammar->rules  #'(grammar-rule ...))]
+              [rules    (map (λ (x) (list (car x)
+                                          (cadr x)))
+                             rules*)]
+              [first    (compute-first   resolver rules)]
+              [follow   (compute-follow  (syntax->datum #'start) 
+                                         first resolver rules)]
+              [grouped  (group-by car rules*)])
+
+         (define (check A α β)
+           (and (set-empty? (set-intersect (first α) (first β)))
+                (or (not (set-member? (first α) 'ε))
+                    (set-empty? (set-intersect (follow A) (first β))))))
+         (define ll1? 
+           (for/and ([group grouped])
+             (for*/and ([rule-1 group]
+                        [rule-2 group]
+                        #:when (not (eq? rule-1 rule-2)))
+               (check (car rule-1) 
+                      (cadr rule-1) 
+                      (cadr rule-2)))))
+         (unless ll1?
+           (raise-syntax-error #f "not a LL(1) grammar"))
+
+         (define tokens
+           (for/fold ([tokens (set)])
+                     ([rule rules])
+            (set-union 
+              (for/set ([thing (cadr rule)]
+                        #:when (eq? (resolver thing) 'token))
+                thing)
+              tokens)))
+
+         (define defined (make-hash))
+
+         (for ([token tokens])
+           (with-syntax* ([stoken  (datum->syntax stx token)]
+                          [expect-token (format-id stx "expect-~a" #'stoken)]
+                          [place-token (format-id stx "$$")]
+                          [token? (get-pred #'stoken)]
+                          [(set-token-field! ...) (get-setters #'stoken)]
+                          [(token-field! ...) (get-getters #'stoken)])
+             (dict-set! defined 
+                token 
+                (cons #'expect-token 
+                      #'(define (expect-token place-token)
+                           (unless (token? cur)
+                             (report place-token cur))
+                           (set-token-field! place-token (token-field! cur)) 
+                           ...
+                           (take))))))
+
+
+        (define (make-cases group parse-nterm place-nterm)
+          (define (generate-body prod stx-rule)
+            (define (get part)
+              (if (dict-has-key? defined part)
+                (car (dict-ref defined part))
+                (format-id stx "parse-~a" part)))
+            (with-syntax 
+              ([the-rule stx-rule]
+               [parse-nterm parse-nterm]
+               [place-nterm place-nterm]
+               [funcs (map get prod)]
+               [places (for/list ([x prod] 
+                                  [i (in-naturals)]) 
+                         (format-id stx-rule "$~a" (+ 1 i)))])
+                #'(body-from-rule the-rule
+                                  [place-nterm places]
+                                  [parse-nterm funcs])))
+
+          (define has-else? #f)
+
+          (define (case-cond prod)
+            (define result (set->list (set-remove (first prod) 'ε)))
+            (if (empty? result)
+              (begin
+                (set! has-else? #t)
+                'else)
+              result))
+
+          (define without-error 
+            (for/list ([rule group])
+              (match-let ([(list name prod as-stx) rule])
+                (with-syntax 
+                  ([body (generate-body prod as-stx)]
+                   [fst  (case-cond prod)])
+                  #'[fst body]))))
+
+          (if has-else?
+            without-error
+            (with-syntax ([parse-nterm parse-nterm]
+                          [place-nterm place-nterm]
+                          [(cases ...) without-error])
+              #'(cases 
+                  ...
+                  [else (report place-nterm cur)]))))
+
+        (for ([group grouped])
+          (let ([nterm (car (car group))]
+                [has-else? #f])
+            (with-syntax*
+              ([parse-nterm (format-id stx "parse-~a" nterm)]
+               [place-nterm (format-id stx "$$")]
+               [(cases ...) (make-cases group #'parse-nterm #'place-nterm)])
+              (dict-set! defined 
+                nterm
+                (cons #'parse-nterm
+                      #'(define (parse-nterm place-nterm)
+                          (case (object-name cur)
+                            cases ...)
+                          ))))))
+
+         (with-syntax* ([(define-thing ...) (for/list ([(k v) defined]) (cdr v))]
+                        [parse-start (car (dict-ref defined (syntax->datum #'start)))])
+             #'(λ (in) 
+                 (define lex (lexer-name/body in))
+                 (define cur (lex))
+                 (define (report expected got)
+                     (error 'parse-error "expected ~s, but got ~s"
+                            expected
+                            got))
+                (define (take) 
+                    (let [(old cur)]
+                      (set! cur (lex))
+                      old))
+                 
+                 define-thing ...
+
+                 (define (as-values result)
+                   (define fres (force result))
+                   (struct-as-values start fres))
+
+                 (as-values
+                   (parse-start (construct-with start '())))))))]))
+
+(define-syntax (struct-as-values stx)
+  (syntax-case stx ()
+    [(_ name object)
+     (with-syntax ([(get ...) (get-getters #'name)])
+       #'(values (force (get object)) ...))]))
+
+(define-syntax-rule (body-from-rule
+                      [head       (form       ...)]
+                      [$$         ($i         ...)]
+                      [parse-head (parse-form ...)])
+  (surround-body [head       (form       ...)] 
+                 [$$         ($i         ...)]
+    (parse-form $i) ...
+    (delay $$)))
+
+
+(require macro-debugger/expand)
+(define all-macro (list 'body-from-rule 
+                        'make-parser
+                        'surround-body
+                        'with-constructors
+                        'with-syntax-lets
+                        'with-delayed
+                        'construct-with
+                        'struct-as-values
+                        ))
+
+(define (parser-expand stx)
+  (syntax->datum (expand/show-predicate stx (λ (x) (memq (syntax-e x) all-macro)))))
+
+(provide make-parser parser-expand)
