@@ -24,7 +24,7 @@
                [fields '()])
       (if (eq? #t cur)
         (reverse fields)
-        (loop (get-super cur) (append (flds cur) fields)))))
+        (loop (get-super cur) (append fields (flds cur))))))
   (define (get-setters stx)
     (reverse
       (list-ref  
