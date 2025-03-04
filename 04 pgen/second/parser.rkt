@@ -5,9 +5,20 @@
 (require racket/dict)
 (define ctx (make-hash))
 
-(define (not-a-variable)
+(define (not-a-variable tokens)
+  (define fst (if (list? tokens) (car tokens) tokens))
+  (define (prn x)
+    (cond
+      [(op-token? x) (format " ~a " (token-text x))]
+      [(token? x) (token-text x)]
+      [(assignment? x)
+       (format "(~a = ~a)" (prn (assignment-var x)) (assignment-value x))]
+      [else (format "~a" x)]))
+  (define tks (apply string-append 
+                     (map prn (flatten (list tokens)))))
   (error 'calc
-         "illegal asignment, not a variable"))
+         (format "cannot assign ~a at ~a in input, not a variable" 
+                 tks (token-pos fst))))
 
 (define (ref name)
   (if (dict-has-key? ctx name)
@@ -18,54 +29,79 @@
   (error 'calc
          (format "variable ~a referenced before assignment" name)))
 
+(define (merge a . b)
+  (define result (flatten (list a b)))
+  (if (= (length result) 1)
+    (car result)
+    result))
+
 (define parse (make-parser {
   [lexer lexer]
   [grammar #:start-with parse-result
-     [(Un  -) [(op-sub )]]
-     [(Op1 /) [(op-div )]]
-     [(Op2 *) [(op-mul )]]
-     [(Op3 +) [(op-add)]]
-     [(Op4 -) [(op-sub)]]
-     [(Op5 (λ (a b) 
-             (displayln (format "~a = ~a" a b))
-             (dict-set! ctx a b)
-             b)) 
+     [(Un  $1* -) [(op-sub )]]
+     [(Op1 $1* /) [(op-div )]]
+     [(Op2 $1* *) [(op-mul )]]
+     [(Op3 $1* +) [(op-add)]]
+     [(Op4 $1* -) [(op-sub)]]
+     [(Op5 $1* (λ (a b) 
+                 (define name 
+                   (let destruct ([cur a])
+                     (cond
+                       [(assignment? cur)
+                        (destruct (assignment-var cur))]
+                       [(variable? cur)
+                        (token-text cur)]
+                       [else (not-a-variable cur)])))
+                 (displayln (format "~a = ~a" name b))
+                 (dict-set! ctx name b)
+                 b)) 
         [(op-assign)]]
      
-     [(Pr (a v) (not-a-variable)) 
-      [(Un .a) (Pr .v)]]
-     [(Pr v place) 
-      [(open-paren) (E .v .place) (close-paren)]]
-     [(Pr v (not-a-variable)) 
-      [(number .p .t .v)]]
-     [(Pr (ref name) name) [(variable .p .name)]]
+     [(Pr (merge op tokens) (action value)) 
+      [(Un .op .action) (Pr .tokens .value)]]
+     [(Pr (if (list? tokens)
+            (merge $1* tokens $3*)
+            tokens)
+          value) 
+      [(open-paren) (E .tokens .value) (close-paren)]]
+     [(Pr $1* v) 
+      [(number _ _ .v)]]
+     [(Pr $1* (ref name)) [(variable _ .name)]]
     
-     [(E1 v (if has? (not-a-variable) p)) 
-      [(Pr .a .p) (C1 .v .has? a)]]
-     [(C1 r #t .a) [(Op1 .op) (Pr .b) (C1 .r .has? (op a b))]]
-     [(C1 r #f .r) []]
+     [(E1 (merge t rest) v) 
+      [(Pr .t .a) (C1 .rest .v a)]]
+     [(C1 (merge top t rest) r .a) 
+      [(Op1 .top .op) (Pr .t .b) (C1 .rest .r (op a b))]]
+     [(C1 '()                r .r) []]
 
-     [(E2 v (if has? (not-a-variable) p)) 
-      [(E1 .a .p) (C2 .v .has? a)]]
-     [(C2 r #t .a) [(Op2 .op) (E1 .b) (C2 .r .has? (op a b))]]
-     [(C2 r #f .r) []]
+     [(E2 (merge t rest) v) 
+      [(E1 .t .a) (C2 .rest .v a)]]
+     [(C2 (merge top t rest) r .a) 
+      [(Op2 .top .op) (E1 .t .b) (C2 .rest .r (op a b))]]
+     [(C2 '()                 r .r) []]
 
-     [(E3 v (if has? (not-a-variable) p)) 
-      [(E2 .a .p) (C3 .v .has? a)]]
-     [(C3 r #t .a) [(Op3 .op) (E2 .b) (C3 .r .has? (op a b))]]
-     [(C3 r #f .r) []]
+     [(E3 (merge t rest) v) 
+      [(E2 .t .a) (C3 .rest .v a)]]
+     [(C3 (merge top t rest) r .a) 
+      [(Op3 .top .op) (E2 .t .b) (C3 .rest .r (op a b))]]
+     [(C3 '()                r .r) []]
 
-     [(E4 v (if has? (not-a-variable) p)) 
-      [(E3 .a .p) (C4 .v .has? a)]]
-     [(C4 r #t .a) [(Op4 .op) (E3 .b) (C4 .r .has? (op a b))]]
-     [(C4 r #f .r) []]
+     [(E4 (merge t rest) v) 
+      [(E3 .t .a) (C4 .rest .v a)]]
+     [(C4 (merge top t rest) r .a) 
+      [(Op4 .top .op) (E3 .t .b) (C4 .rest .r (op a b))]]
+     [(C4 '()                r .r) []]
 
-     [(E5 v p) [(E4 .a .p) (C5 .v p a)]]
-     [(C5 (op place v) .place) [(Op5 .op) (E5 .v)]]
-     [(C5 r .place .r) []]
+     [(E5 r v) [(E4 .t .a) (C5 .r .v a t)]]
+     [(C5 (assignment tokens $$-value*) 
+          (op tokens value) 
+          _ 
+          .tokens) 
+      [(Op5 _ .op) (E5 _ .value)]]
+     [(C5 tokens r .r .tokens) []]
 
-     [(E v p) [(E5 .v .p)]]
-     [(parse-result v) [(E .v) (end-of-input)]]
+     [(E tokens v) [(E5 .tokens .v)]]
+     [(parse-result v) [(E _ .v) (end-of-input)]]
     ]
 }))
 

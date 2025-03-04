@@ -330,7 +330,12 @@
   (calc "c")
   (calc "(a) = 5")
   (eval:error (calc "(1 + a) = 5"))
+  (eval:error (calc "(1 + ((b = a) = 1 + (a = 1 * 2 * 3 * 4 * 5))) = 5"))
   (eval:error (calc "a - a / (a - a)"))
+  (eval:error (calc "x = (x = x) = 1"))
+  (eval:error (calc "x = (x = 1/0) = 1"))
+  (calc "x = (x = 3) = 1")
+  (calc "(x = (x = 3)) = 1")
 ]
 
 @section[#:tag "check"]{Что если грамматика не LL(1)?}
