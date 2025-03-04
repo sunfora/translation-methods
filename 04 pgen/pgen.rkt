@@ -7,6 +7,7 @@
 (require (for-syntax racket/match))
 (require (for-syntax racket/sequence))
 (require (for-syntax racket/bool))
+(require (for-syntax syntax/stx))
 (require racket/match)
 (require racket/provide-syntax)
 
@@ -46,6 +47,13 @@
     (and (identifier? stx)
          (eq? (symbol-ref (syntax->datum stx) 0) #\.))))
 
+(define-for-syntax (bind-as expr)
+  (with-syntax ([expr expr])
+    (λ (stx)
+        (syntax-case stx ()
+          [(xid terms ...) #'(expr terms ...)]
+          [xid (identifier? #'xid) #'expr]))))
+
 (define-syntax (construct-with stx)
   (syntax-case stx ()
     [(_ st-name value)
@@ -78,10 +86,10 @@
            [undot    (substring str 1)])
       (format-id dotted "~a" undot)))
   (define (force-dotted place name field get set expr)
-    (with-syntax ([id (undot expr)]
-                  [get get]
-                  [place place])
-      #'[id (λ (_) (syntax (force (get place))))]))
+    (with-syntax* ([id (undot expr)]
+                   [get get]
+                   [place place])
+      #'[id (bind-as #'(force (get place)))]))
   (define (gen-lambdas stx ctors)
       (map (λ (j) (apply force-dotted j)) 
            ((grab-with-ctors is-dotted?) stx ctors)))
@@ -100,25 +108,25 @@
               (define getters (get-getters #'form-name))
               (define starred (map (star #'place) fields))
               (list
-                (with-syntax ([(get ...) getters]
-                              [starred-place (format-id #'place "~a*" #'place)])
-                  #'[starred-place 
-                      (λ (_) (syntax (form-name (force (get place)) ...)))])
+                (with-syntax* ([(get ...) getters]
+                               [starred-place (format-id #'place "~a*" #'place)])
+                  #'[starred-place (bind-as (syntax (form-name (force (get place)) ...)))])
                 (for/list ([id starred]
                            [get getters])
-                  (with-syntax ([id id] [get get])
-                    #'[id (λ (_) (syntax (force (get place))))]))))))))
+                  (with-syntax* ([id id] [get get])
+                    #'[id (bind-as #'(force (get place)))]))))))))
   (syntax-case stx ()
     [(_ [head [form ...]] 
         [head-ctor [form-ctor ...]] 
         body ...)
-     (with-syntax* ([forms #'(head form ...)]
-                    [ctors #'(head-ctor form-ctor ...)]
-                    [(dotted ...) (gen-lambdas #'forms #'ctors)]
-                    [(starred ...) (gen-starred #'forms #'ctors)])
-       #'(let-syntax (dotted  ...
-                      starred ...)
-             body ...))]))
+     (begin
+       (with-syntax* ([forms #'(head form ...)]
+                      [ctors #'(head-ctor form-ctor ...)]
+                      [(dotted ...) (gen-lambdas #'forms #'ctors)]
+                      [(starred ...) (gen-starred #'forms #'ctors)])
+         #'(let-syntax (dotted  ...
+                        starred ...)
+               body ...)))]))
 
 (define-syntax (with-delayed stx)
   (define (not-dotted? x) (not (is-dotted? x)))
@@ -164,7 +172,7 @@
 
 (define-for-syntax (make-resolver donate)
   (λ (qv)
-    (define stx (datum->syntax donate qv))
+    (define stx (datum->syntax donate qv donate))
     (let loop ([cur stx]
                [next (get-super stx)])
       (if (eq? next #t)
@@ -270,14 +278,16 @@
     [(_ {
         [lexer lexer-name/body]
         [grammar #:start-with start
-           grammar-rule ...]
+           grammar-rule ... ]
        })
      (begin 
        (unless (eq? (syntax->datum #'grammar) 'grammar)
          (raise-syntax-error #f "expected literal `grammar`" #'grammar))
        (unless (eq? (syntax->datum #'lexer) 'lexer)
          (raise-syntax-error #f "expected literal `lexer`"   #'lexer))
-       (let* ([resolver (make-resolver   stx)]
+
+       (let* ([donate #'grammar]
+              [resolver (make-resolver donate)]
               [rules*   (grammar->rules  #'(grammar-rule ...))]
               [rules    (map (λ (x) (list (car x)
                                           (cadr x)))
@@ -314,9 +324,9 @@
          (define defined (make-hash))
 
          (for ([token tokens])
-           (with-syntax* ([stoken  (datum->syntax stx token)]
-                          [expect-token (format-id stx "expect-~a" #'stoken)]
-                          [place-token (format-id stx "$$")]
+           (with-syntax* ([stoken  (datum->syntax donate token)]
+                          [expect-token (format-id donate "expect-~a" #'stoken)]
+                          [place-token (format-id donate "$$")]
                           [token? (get-pred #'stoken)]
                           [(set-token-field! ...) (get-setters #'stoken)]
                           [(token-field! ...) (get-getters #'stoken)])
@@ -336,7 +346,7 @@
             (define (get part)
               (if (dict-has-key? defined part)
                 (car (dict-ref defined part))
-                (format-id stx "parse-~a" part)))
+                (format-id donate "parse-~a" part)))
             (with-syntax 
               ([the-rule stx-rule]
                [parse-nterm parse-nterm]
@@ -380,8 +390,8 @@
           (let ([nterm (car (car group))]
                 [has-else? #f])
             (with-syntax*
-              ([parse-nterm (format-id stx "parse-~a" nterm)]
-               [place-nterm (format-id stx "$$")]
+              ([parse-nterm (format-id donate "parse-~a" nterm)]
+               [place-nterm (format-id donate "$$")]
                [(cases ...) (make-cases group #'parse-nterm #'place-nterm)])
               (dict-set! defined 
                 nterm
@@ -392,7 +402,8 @@
                           ))))))
 
          (with-syntax* ([(define-thing ...) (for/list ([(k v) defined]) (cdr v))]
-                        [parse-start (car (dict-ref defined (syntax->datum #'start)))])
+                        [parse-start (car (dict-ref defined (syntax->datum #'start)))]
+                        [.... '...])
              #'(λ (in) 
                  (define lex (lexer-name/body in))
                  (define cur (lex))
@@ -404,7 +415,7 @@
                     (let [(old cur)]
                       (set! cur (lex))
                       old))
-                 
+
                  define-thing ...
 
                  (define (as-values result)
@@ -413,6 +424,8 @@
 
                  (as-values
                    (parse-start (construct-with start '())))))))]))
+
+
 
 (define-syntax (struct-as-values stx)
   (syntax-case stx ()
@@ -445,3 +458,4 @@
   (syntax->datum (expand/show-predicate stx (λ (x) (memq (syntax-e x) all-macro)))))
 
 (provide make-parser parser-expand)
+(provide (for-syntax bind-as))
