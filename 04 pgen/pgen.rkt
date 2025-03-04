@@ -61,15 +61,26 @@
                      #'value))]))
 
 (define-for-syntax (grab-from-form pred?)
+  (define (ignore? stx)
+    (eq? (syntax-e stx) '_))
   (λ (stx)
     (syntax-case stx ()
       [(name exprs ...)
-       (for/list ([expr  (syntax-e  #'(exprs ...))]
-                  [field (get-fields     #'name)]
-                  [get   (get-getters    #'name)]
-                  [set   (get-setters    #'name)]
-                  #:when (pred? expr))
-         (list #'name field get set expr))])))
+       (let* ([exprs   (syntax-e  #'(exprs ...))]
+              [fields  (get-fields     #'name)]
+              [getters (get-getters    #'name)]
+              [setters (get-setters    #'name)])
+         (when (> (length exprs) (length fields))
+           (raise-syntax-error 
+             #f
+             (format "too many expressions in form ~a, possible fields: ~a" stx fields)))
+         (for/list ([expr  exprs]
+                    [field fields]
+                    [get   getters]
+                    [set   setters]
+                    #:when (and (not (ignore? expr))
+                                (pred? expr)))
+           (list #'name field get set expr)))])))
 
 (define-for-syntax (grab-with-ctors pred?)
   (λ (stx ctors)
