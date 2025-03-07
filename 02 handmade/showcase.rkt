@@ -32,5 +32,5 @@
   #:eval base-eval
 
   (eval:error (parse-string " "))
-  (visual "!a & b")
+  (visual "!a * (b + c)")
 ]

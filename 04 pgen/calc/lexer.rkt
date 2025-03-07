@@ -27,7 +27,13 @@
     {else (error 'make "weird paren type: ~s" text)}))
 
 (define (make-number pos text) 
-  (number pos text (string->number text)))
+  (define dots (for/fold ([cnt 0])
+                         ([c text]
+                          #:when (equal? #\. c))
+                 (+ 1 cnt)))
+  (if (< dots 2)
+    (number pos text (string->number text))
+    (violation pos text)))
 
 (define-syntax-parameter advance (syntax-rules ()))
 (define-syntax-parameter retry (syntax-rules ()))
@@ -43,6 +49,7 @@
   (define (op? x) (member x operations))
   (define (par? x) (member x parens))
   (define (num? x) (and (char? x) (or (char-numeric? x)
+                                      (equal? x #\.)
                                       )))
   (define skip? char-whitespace?)
   ; NOTE: короче вроде генераторы самый 

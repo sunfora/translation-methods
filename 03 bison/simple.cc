@@ -47,6 +47,7 @@
   #include <vector>
   #include <map>
   #include <unordered_map>
+  #include <functional>
 
 
   namespace color {
@@ -141,7 +142,7 @@
     }
   };
 
-#line 145 "simple.cc"
+#line 146 "simple.cc"
 
 
 # include <cstdlib> // std::abort
@@ -276,7 +277,7 @@
 #endif
 
 namespace yy {
-#line 280 "simple.cc"
+#line 281 "simple.cc"
 
 
 
@@ -472,23 +473,29 @@ namespace yy {
     /// An auxiliary type to compute the largest semantic type.
     union union_type
     {
-      // OPEN_PAREN
-      // CLOSED_PAREN
-      // SEMICOLON
-      // SET
-      char dummy1[sizeof (char)];
-
-      // NUMBER
       // ADD
       // DIV
       // MUL
       // SUB
-      // expr
+      // OPEN_PAREN
+      // CLOSED_PAREN
+      // SEMICOLON
+      // SET
+      // QUESTION
+      // ELSE
+      // THEN
+      char dummy1[sizeof (char)];
+
+      // NUMBER
       char dummy2[sizeof (int)];
+
+      // tern
+      // expr
+      char dummy3[sizeof (std::function<int(void)>)];
 
       // VARIABLE
       // statement
-      char dummy3[sizeof (std::string)];
+      char dummy4[sizeof (std::string)];
     };
 
     /// The size of the largest semantic type.
@@ -541,7 +548,10 @@ namespace yy {
     OPEN_PAREN = 264,              // OPEN_PAREN
     CLOSED_PAREN = 265,            // CLOSED_PAREN
     SEMICOLON = 266,               // SEMICOLON
-    SET = 267                      // SET
+    SET = 267,                     // SET
+    QUESTION = 268,                // QUESTION
+    ELSE = 269,                    // ELSE
+    THEN = 270                     // THEN
       };
       /// Backward compatibility alias (Bison 3.6).
       typedef token_kind_type yytokentype;
@@ -558,7 +568,7 @@ namespace yy {
     {
       enum symbol_kind_type
       {
-        YYNTOKENS = 13, ///< Number of tokens.
+        YYNTOKENS = 16, ///< Number of tokens.
         S_YYEMPTY = -2,
         S_YYEOF = 0,                             // "end of file"
         S_YYerror = 1,                           // error
@@ -573,10 +583,14 @@ namespace yy {
         S_CLOSED_PAREN = 10,                     // CLOSED_PAREN
         S_SEMICOLON = 11,                        // SEMICOLON
         S_SET = 12,                              // SET
-        S_YYACCEPT = 13,                         // $accept
-        S_result = 14,                           // result
-        S_statement = 15,                        // statement
-        S_expr = 16                              // expr
+        S_QUESTION = 13,                         // QUESTION
+        S_ELSE = 14,                             // ELSE
+        S_THEN = 15,                             // THEN
+        S_YYACCEPT = 16,                         // $accept
+        S_result = 17,                           // result
+        S_statement = 18,                        // statement
+        S_tern = 19,                             // tern
+        S_expr = 20                              // expr
       };
     };
 
@@ -611,20 +625,27 @@ namespace yy {
       {
         switch (this->kind ())
     {
-      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
-      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
-      case symbol_kind::S_SEMICOLON: // SEMICOLON
-      case symbol_kind::S_SET: // SET
-        value.move< char > (std::move (that.value));
-        break;
-
-      case symbol_kind::S_NUMBER: // NUMBER
       case symbol_kind::S_ADD: // ADD
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
-      case symbol_kind::S_expr: // expr
+      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
+      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
+      case symbol_kind::S_QUESTION: // QUESTION
+      case symbol_kind::S_ELSE: // ELSE
+      case symbol_kind::S_THEN: // THEN
+        value.move< char > (std::move (that.value));
+        break;
+
+      case symbol_kind::S_NUMBER: // NUMBER
         value.move< int > (std::move (that.value));
+        break;
+
+      case symbol_kind::S_tern: // tern
+      case symbol_kind::S_expr: // expr
+        value.move< std::function<int(void)> > (std::move (that.value));
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
@@ -678,6 +699,18 @@ namespace yy {
 #endif
 
 #if 201103L <= YY_CPLUSPLUS
+      basic_symbol (typename Base::kind_type t, std::function<int(void)>&& v)
+        : Base (t)
+        , value (std::move (v))
+      {}
+#else
+      basic_symbol (typename Base::kind_type t, const std::function<int(void)>& v)
+        : Base (t)
+        , value (v)
+      {}
+#endif
+
+#if 201103L <= YY_CPLUSPLUS
       basic_symbol (typename Base::kind_type t, std::string&& v)
         : Base (t)
         , value (std::move (v))
@@ -713,20 +746,27 @@ namespace yy {
         // Value type destructor.
 switch (yykind)
     {
-      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
-      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
-      case symbol_kind::S_SEMICOLON: // SEMICOLON
-      case symbol_kind::S_SET: // SET
-        value.template destroy< char > ();
-        break;
-
-      case symbol_kind::S_NUMBER: // NUMBER
       case symbol_kind::S_ADD: // ADD
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
-      case symbol_kind::S_expr: // expr
+      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
+      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
+      case symbol_kind::S_QUESTION: // QUESTION
+      case symbol_kind::S_ELSE: // ELSE
+      case symbol_kind::S_THEN: // THEN
+        value.template destroy< char > ();
+        break;
+
+      case symbol_kind::S_NUMBER: // NUMBER
         value.template destroy< int > ();
+        break;
+
+      case symbol_kind::S_tern: // tern
+      case symbol_kind::S_expr: // expr
+        value.template destroy< std::function<int(void)> > ();
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
@@ -976,14 +1016,14 @@ switch (yykind)
 #if 201103L <= YY_CPLUSPLUS
       static
       symbol_type
-      make_ADD (int v)
+      make_ADD (char v)
       {
         return symbol_type (token::ADD, std::move (v));
       }
 #else
       static
       symbol_type
-      make_ADD (const int& v)
+      make_ADD (const char& v)
       {
         return symbol_type (token::ADD, v);
       }
@@ -991,14 +1031,14 @@ switch (yykind)
 #if 201103L <= YY_CPLUSPLUS
       static
       symbol_type
-      make_DIV (int v)
+      make_DIV (char v)
       {
         return symbol_type (token::DIV, std::move (v));
       }
 #else
       static
       symbol_type
-      make_DIV (const int& v)
+      make_DIV (const char& v)
       {
         return symbol_type (token::DIV, v);
       }
@@ -1006,14 +1046,14 @@ switch (yykind)
 #if 201103L <= YY_CPLUSPLUS
       static
       symbol_type
-      make_MUL (int v)
+      make_MUL (char v)
       {
         return symbol_type (token::MUL, std::move (v));
       }
 #else
       static
       symbol_type
-      make_MUL (const int& v)
+      make_MUL (const char& v)
       {
         return symbol_type (token::MUL, v);
       }
@@ -1021,14 +1061,14 @@ switch (yykind)
 #if 201103L <= YY_CPLUSPLUS
       static
       symbol_type
-      make_SUB (int v)
+      make_SUB (char v)
       {
         return symbol_type (token::SUB, std::move (v));
       }
 #else
       static
       symbol_type
-      make_SUB (const int& v)
+      make_SUB (const char& v)
       {
         return symbol_type (token::SUB, v);
       }
@@ -1091,6 +1131,51 @@ switch (yykind)
       make_SET (const char& v)
       {
         return symbol_type (token::SET, v);
+      }
+#endif
+#if 201103L <= YY_CPLUSPLUS
+      static
+      symbol_type
+      make_QUESTION (char v)
+      {
+        return symbol_type (token::QUESTION, std::move (v));
+      }
+#else
+      static
+      symbol_type
+      make_QUESTION (const char& v)
+      {
+        return symbol_type (token::QUESTION, v);
+      }
+#endif
+#if 201103L <= YY_CPLUSPLUS
+      static
+      symbol_type
+      make_ELSE (char v)
+      {
+        return symbol_type (token::ELSE, std::move (v));
+      }
+#else
+      static
+      symbol_type
+      make_ELSE (const char& v)
+      {
+        return symbol_type (token::ELSE, v);
+      }
+#endif
+#if 201103L <= YY_CPLUSPLUS
+      static
+      symbol_type
+      make_THEN (char v)
+      {
+        return symbol_type (token::THEN, std::move (v));
+      }
+#else
+      static
+      symbol_type
+      make_THEN (const char& v)
+      {
+        return symbol_type (token::THEN, v);
       }
 #endif
 
@@ -1416,8 +1501,8 @@ switch (yykind)
     /// Constants.
     enum
     {
-      yylast_ = 34,     ///< Last index in yytable_.
-      yynnts_ = 4,  ///< Number of nonterminal symbols.
+      yylast_ = 41,     ///< Last index in yytable_.
+      yynnts_ = 5,  ///< Number of nonterminal symbols.
       yyfinal_ = 2 ///< Termination state number.
     };
 
@@ -1462,10 +1547,11 @@ switch (yykind)
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     1,     2,     3,     4,
-       5,     6,     7,     8,     9,    10,    11,    12
+       5,     6,     7,     8,     9,    10,    11,    12,    13,    14,
+      15
     };
     // Last valid token kind.
-    const int code_max = 267;
+    const int code_max = 270;
 
     if (t <= 0)
       return symbol_kind::S_YYEOF;
@@ -1483,20 +1569,27 @@ switch (yykind)
   {
     switch (this->kind ())
     {
-      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
-      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
-      case symbol_kind::S_SEMICOLON: // SEMICOLON
-      case symbol_kind::S_SET: // SET
-        value.copy< char > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_NUMBER: // NUMBER
       case symbol_kind::S_ADD: // ADD
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
-      case symbol_kind::S_expr: // expr
+      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
+      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
+      case symbol_kind::S_QUESTION: // QUESTION
+      case symbol_kind::S_ELSE: // ELSE
+      case symbol_kind::S_THEN: // THEN
+        value.copy< char > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_NUMBER: // NUMBER
         value.copy< int > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_tern: // tern
+      case symbol_kind::S_expr: // expr
+        value.copy< std::function<int(void)> > (YY_MOVE (that.value));
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
@@ -1535,20 +1628,27 @@ switch (yykind)
     super_type::move (s);
     switch (this->kind ())
     {
-      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
-      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
-      case symbol_kind::S_SEMICOLON: // SEMICOLON
-      case symbol_kind::S_SET: // SET
-        value.move< char > (YY_MOVE (s.value));
-        break;
-
-      case symbol_kind::S_NUMBER: // NUMBER
       case symbol_kind::S_ADD: // ADD
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
-      case symbol_kind::S_expr: // expr
+      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
+      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
+      case symbol_kind::S_QUESTION: // QUESTION
+      case symbol_kind::S_ELSE: // ELSE
+      case symbol_kind::S_THEN: // THEN
+        value.move< char > (YY_MOVE (s.value));
+        break;
+
+      case symbol_kind::S_NUMBER: // NUMBER
         value.move< int > (YY_MOVE (s.value));
+        break;
+
+      case symbol_kind::S_tern: // tern
+      case symbol_kind::S_expr: // expr
+        value.move< std::function<int(void)> > (YY_MOVE (s.value));
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
@@ -1613,7 +1713,7 @@ switch (yykind)
 
 
 } // yy
-#line 1617 "simple.cc"
+#line 1717 "simple.cc"
 
 
 
@@ -1621,24 +1721,27 @@ switch (yykind)
 
 
 // Unqualified %code blocks.
-#line 112 "simple.yy"
+#line 113 "simple.yy"
 
   namespace yy
   {
     // Return the next token.
     parser::symbol_type yylex ()
     {
-      const int SEMICOLON    = 0b10000000000;
-      const int SET          = 0b01000000000;
-      const int WHITESPACE   = 0b00100000000;
-      const int VARIABLE     = 0b00010000000;
-      const int NUMBER       = 0b00001000000;
-      const int ADD          = 0b00000100000;
-      const int DIV          = 0b00000010000;
-      const int MUL          = 0b00000001000;
-      const int SUB          = 0b00000000100;
-      const int OPEN_PAREN   = 0b00000000010;
-      const int CLOSED_PAREN = 0b00000000001;
+      const int SEMICOLON    = 0b100000000000000;
+      const int ELSE         = 0b010000000000000;
+      const int THEN         = 0b001000000000000;
+      const int QUESTION     = 0b000100000000000;
+      const int SET          = 0b000001000000000;
+      const int WHITESPACE   = 0b000000100000000;
+      const int VARIABLE     = 0b000000010000000;
+      const int NUMBER       = 0b000000001000000;
+      const int ADD          = 0b000000000100000;
+      const int DIV          = 0b000000000010000;
+      const int MUL          = 0b000000000001000;
+      const int SUB          = 0b000000000000100;
+      const int OPEN_PAREN   = 0b000000000000010;
+      const int CLOSED_PAREN = 0b000000000000001;
 
       static std::string buffer;
       static int read = std::cin.get();
@@ -1738,6 +1841,18 @@ switch (yykind)
           collect(SET);
           return parser::make_SET('=');
         }
+        case '>': {
+          collect(THEN);
+          return parser::make_THEN('>');
+        }
+        case ':': {
+          collect(ELSE);
+          return parser::make_ELSE(':');
+        }
+        case '?': {
+          collect(QUESTION);
+          return parser::make_QUESTION('?');
+        }
       }
 
       /* nothing that looks like operator 
@@ -1755,7 +1870,7 @@ switch (yykind)
     }
   }
 
-#line 1759 "simple.cc"
+#line 1874 "simple.cc"
 
 
 #ifndef YY_
@@ -1828,7 +1943,7 @@ switch (yykind)
 #define YYRECOVERING()  (!!yyerrstatus_)
 
 namespace yy {
-#line 1832 "simple.cc"
+#line 1947 "simple.cc"
 
   /// Build a parser object.
   parser::parser (evaluation_context * ctx_yyarg)
@@ -1896,20 +2011,27 @@ namespace yy {
   {
     switch (that.kind ())
     {
-      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
-      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
-      case symbol_kind::S_SEMICOLON: // SEMICOLON
-      case symbol_kind::S_SET: // SET
-        value.YY_MOVE_OR_COPY< char > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_NUMBER: // NUMBER
       case symbol_kind::S_ADD: // ADD
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
-      case symbol_kind::S_expr: // expr
+      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
+      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
+      case symbol_kind::S_QUESTION: // QUESTION
+      case symbol_kind::S_ELSE: // ELSE
+      case symbol_kind::S_THEN: // THEN
+        value.YY_MOVE_OR_COPY< char > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_NUMBER: // NUMBER
         value.YY_MOVE_OR_COPY< int > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_tern: // tern
+      case symbol_kind::S_expr: // expr
+        value.YY_MOVE_OR_COPY< std::function<int(void)> > (YY_MOVE (that.value));
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
@@ -1932,20 +2054,27 @@ namespace yy {
   {
     switch (that.kind ())
     {
-      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
-      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
-      case symbol_kind::S_SEMICOLON: // SEMICOLON
-      case symbol_kind::S_SET: // SET
-        value.move< char > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_NUMBER: // NUMBER
       case symbol_kind::S_ADD: // ADD
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
-      case symbol_kind::S_expr: // expr
+      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
+      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
+      case symbol_kind::S_QUESTION: // QUESTION
+      case symbol_kind::S_ELSE: // ELSE
+      case symbol_kind::S_THEN: // THEN
+        value.move< char > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_NUMBER: // NUMBER
         value.move< int > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_tern: // tern
+      case symbol_kind::S_expr: // expr
+        value.move< std::function<int(void)> > (YY_MOVE (that.value));
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
@@ -1968,20 +2097,27 @@ namespace yy {
     state = that.state;
     switch (that.kind ())
     {
-      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
-      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
-      case symbol_kind::S_SEMICOLON: // SEMICOLON
-      case symbol_kind::S_SET: // SET
-        value.copy< char > (that.value);
-        break;
-
-      case symbol_kind::S_NUMBER: // NUMBER
       case symbol_kind::S_ADD: // ADD
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
-      case symbol_kind::S_expr: // expr
+      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
+      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
+      case symbol_kind::S_QUESTION: // QUESTION
+      case symbol_kind::S_ELSE: // ELSE
+      case symbol_kind::S_THEN: // THEN
+        value.copy< char > (that.value);
+        break;
+
+      case symbol_kind::S_NUMBER: // NUMBER
         value.copy< int > (that.value);
+        break;
+
+      case symbol_kind::S_tern: // tern
+      case symbol_kind::S_expr: // expr
+        value.copy< std::function<int(void)> > (that.value);
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
@@ -2002,20 +2138,27 @@ namespace yy {
     state = that.state;
     switch (that.kind ())
     {
-      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
-      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
-      case symbol_kind::S_SEMICOLON: // SEMICOLON
-      case symbol_kind::S_SET: // SET
-        value.move< char > (that.value);
-        break;
-
-      case symbol_kind::S_NUMBER: // NUMBER
       case symbol_kind::S_ADD: // ADD
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
-      case symbol_kind::S_expr: // expr
+      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
+      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
+      case symbol_kind::S_QUESTION: // QUESTION
+      case symbol_kind::S_ELSE: // ELSE
+      case symbol_kind::S_THEN: // THEN
+        value.move< char > (that.value);
+        break;
+
+      case symbol_kind::S_NUMBER: // NUMBER
         value.move< int > (that.value);
+        break;
+
+      case symbol_kind::S_tern: // tern
+      case symbol_kind::S_expr: // expr
+        value.move< std::function<int(void)> > (that.value);
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
@@ -2277,20 +2420,27 @@ namespace yy {
          when using variants.  */
       switch (yyr1_[yyn])
     {
-      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
-      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
-      case symbol_kind::S_SEMICOLON: // SEMICOLON
-      case symbol_kind::S_SET: // SET
-        yylhs.value.emplace< char > ();
-        break;
-
-      case symbol_kind::S_NUMBER: // NUMBER
       case symbol_kind::S_ADD: // ADD
       case symbol_kind::S_DIV: // DIV
       case symbol_kind::S_MUL: // MUL
       case symbol_kind::S_SUB: // SUB
-      case symbol_kind::S_expr: // expr
+      case symbol_kind::S_OPEN_PAREN: // OPEN_PAREN
+      case symbol_kind::S_CLOSED_PAREN: // CLOSED_PAREN
+      case symbol_kind::S_SEMICOLON: // SEMICOLON
+      case symbol_kind::S_SET: // SET
+      case symbol_kind::S_QUESTION: // QUESTION
+      case symbol_kind::S_ELSE: // ELSE
+      case symbol_kind::S_THEN: // THEN
+        yylhs.value.emplace< char > ();
+        break;
+
+      case symbol_kind::S_NUMBER: // NUMBER
         yylhs.value.emplace< int > ();
+        break;
+
+      case symbol_kind::S_tern: // tern
+      case symbol_kind::S_expr: // expr
+        yylhs.value.emplace< std::function<int(void)> > ();
         break;
 
       case symbol_kind::S_VARIABLE: // VARIABLE
@@ -2313,18 +2463,18 @@ namespace yy {
           switch (yyn)
             {
   case 3: // result: result statement SEMICOLON
-#line 266 "simple.yy"
+#line 286 "simple.yy"
                              { 
     for (auto text_node : yystack_[1].value.as < std::string > ()) {
       std::cout << text_node;
     }
     std::cout << std::endl; 
   }
-#line 2324 "simple.cc"
+#line 2474 "simple.cc"
     break;
 
   case 4: // result: result error
-#line 272 "simple.yy"
+#line 292 "simple.yy"
                {
     /* skip everything up to semicolon */
     using sk = parser::symbol_kind;
@@ -2345,89 +2495,143 @@ namespace yy {
     yyclearin;
     yyerrok;
   }
-#line 2349 "simple.cc"
+#line 2499 "simple.cc"
     break;
 
   case 5: // statement: %empty
-#line 295 "simple.yy"
+#line 315 "simple.yy"
          {
     yylhs.value.as < std::string > () = std::string{};
   }
-#line 2357 "simple.cc"
+#line 2507 "simple.cc"
     break;
 
   case 6: // statement: VARIABLE SET expr
-#line 298 "simple.yy"
+#line 318 "simple.yy"
                     {
     /* assign */
-    ctx->set(yystack_[2].value.as < std::string > (), yystack_[0].value.as < int > ());
-    yylhs.value.as < std::string > () = yystack_[2].value.as < std::string > () + " = " + color::to_string(color::blue(yystack_[0].value.as < int > ()));
-  }
-#line 2367 "simple.cc"
-    break;
-
-  case 7: // statement: expr
-#line 303 "simple.yy"
-       {
-    yylhs.value.as < std::string > () = color::to_string(color::blue(yystack_[0].value.as < int > ())); 
-  }
-#line 2375 "simple.cc"
-    break;
-
-  case 8: // expr: expr ADD expr
-#line 308 "simple.yy"
-                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () + yystack_[0].value.as < int > (); }
-#line 2381 "simple.cc"
-    break;
-
-  case 9: // expr: expr SUB expr
-#line 309 "simple.yy"
-                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () - yystack_[0].value.as < int > (); }
-#line 2387 "simple.cc"
-    break;
-
-  case 10: // expr: expr MUL expr
-#line 310 "simple.yy"
-                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () * yystack_[0].value.as < int > (); }
-#line 2393 "simple.cc"
-    break;
-
-  case 11: // expr: expr DIV expr
-#line 311 "simple.yy"
-                  { yylhs.value.as < int > () = yystack_[2].value.as < int > () / yystack_[0].value.as < int > (); }
-#line 2399 "simple.cc"
-    break;
-
-  case 12: // expr: OPEN_PAREN expr CLOSED_PAREN
-#line 319 "simple.yy"
-                               {
-    yylhs.value.as < int > () = yystack_[1].value.as < int > ();
-  }
-#line 2407 "simple.cc"
-    break;
-
-  case 13: // expr: VARIABLE
-#line 324 "simple.yy"
-           { 
       try {
-        yylhs.value.as < int > () = ctx->eval(yystack_[0].value.as < std::string > ()); 
+        ctx->set(yystack_[2].value.as < std::string > (), yystack_[0].value.as < std::function<int(void)> > ()());
+        yylhs.value.as < std::string > () = yystack_[2].value.as < std::string > () + " = " + color::to_string(color::blue(yystack_[0].value.as < std::function<int(void)> > ()()));
       }
       catch (undefined_variable e) {
         yy::parser::error(e.message);
         YYERROR;
       }
-    }
-#line 2421 "simple.cc"
+      catch (std::domain_error e) {
+        yy::parser::error(std::string{e.what()});
+        YYERROR;
+      }
+  }
+#line 2527 "simple.cc"
     break;
 
-  case 14: // expr: NUMBER
+  case 7: // statement: expr
 #line 333 "simple.yy"
-         { yylhs.value.as < int > () = yystack_[0].value.as < int > (); }
-#line 2427 "simple.cc"
+       {
+    try {
+      yylhs.value.as < std::string > () = color::to_string(color::blue(yystack_[0].value.as < std::function<int(void)> > ()())); 
+    }
+    catch (undefined_variable e) {
+      yy::parser::error(e.message);
+      YYERROR;
+    }
+    catch (std::domain_error e) {
+      yy::parser::error(std::string{e.what()});
+      YYERROR;
+    }
+  }
+#line 2545 "simple.cc"
+    break;
+
+  case 8: // tern: OPEN_PAREN expr CLOSED_PAREN QUESTION expr ELSE expr
+#line 347 "simple.yy"
+                                                           {
+      auto a = yystack_[5].value.as < std::function<int(void)> > (); 
+      auto b = yystack_[2].value.as < std::function<int(void)> > (); 
+      auto c = yystack_[0].value.as < std::function<int(void)> > (); 
+      if (a()) {
+        yylhs.value.as < std::function<int(void)> > () = b;
+      } else {
+        yylhs.value.as < std::function<int(void)> > () = c;
+      }}
+#line 2559 "simple.cc"
+    break;
+
+  case 9: // expr: expr ADD expr
+#line 359 "simple.yy"
+                  { auto a = yystack_[2].value.as < std::function<int(void)> > ();
+                    auto b = yystack_[0].value.as < std::function<int(void)> > ();
+                    yylhs.value.as < std::function<int(void)> > () = [=](){return a() + b(); }; 
+                  }
+#line 2568 "simple.cc"
+    break;
+
+  case 10: // expr: expr SUB expr
+#line 363 "simple.yy"
+                  { auto a = yystack_[2].value.as < std::function<int(void)> > (); 
+                    auto b = yystack_[0].value.as < std::function<int(void)> > (); 
+                    yylhs.value.as < std::function<int(void)> > () = [=](){return a() - b(); }; 
+                  }
+#line 2577 "simple.cc"
+    break;
+
+  case 11: // expr: expr MUL expr
+#line 367 "simple.yy"
+                  { auto a = yystack_[2].value.as < std::function<int(void)> > (); 
+                    auto b = yystack_[0].value.as < std::function<int(void)> > (); 
+                    yylhs.value.as < std::function<int(void)> > () = [=](){return a() * b(); }; 
+                  }
+#line 2586 "simple.cc"
+    break;
+
+  case 12: // expr: expr DIV expr
+#line 371 "simple.yy"
+                  { auto a = yystack_[2].value.as < std::function<int(void)> > (); 
+                    auto b = yystack_[0].value.as < std::function<int(void)> > (); 
+                    yylhs.value.as < std::function<int(void)> > () = [=](){
+                      auto bv = b();
+                      if (bv == 0) {
+                        throw std::domain_error{"division by zero"};
+                      }
+                      return a() / bv; 
+                    }; 
+                  }
+#line 2601 "simple.cc"
+    break;
+
+  case 13: // expr: tern
+#line 381 "simple.yy"
+         {yylhs.value.as < std::function<int(void)> > () = yystack_[0].value.as < std::function<int(void)> > ();}
+#line 2607 "simple.cc"
+    break;
+
+  case 14: // expr: OPEN_PAREN expr CLOSED_PAREN
+#line 391 "simple.yy"
+                               {
+    yylhs.value.as < std::function<int(void)> > () = yystack_[1].value.as < std::function<int(void)> > ();
+  }
+#line 2615 "simple.cc"
+    break;
+
+  case 15: // expr: VARIABLE
+#line 396 "simple.yy"
+           { 
+      auto name = yystack_[0].value.as < std::string > ();
+      yylhs.value.as < std::function<int(void)> > () = [=](){return ctx->eval(name);};
+    }
+#line 2624 "simple.cc"
+    break;
+
+  case 16: // expr: NUMBER
+#line 400 "simple.yy"
+         { int x = yystack_[0].value.as < int > ();
+           yylhs.value.as < std::function<int(void)> > () = [=](){return x;}; }
+#line 2631 "simple.cc"
     break;
 
 
-#line 2431 "simple.cc"
+#line 2635 "simple.cc"
 
             default:
               break;
@@ -2608,7 +2812,8 @@ namespace yy {
     {
     "end of file", "error", "invalid token", "VARIABLE", "NUMBER", "ADD",
   "DIV", "MUL", "SUB", "OPEN_PAREN", "CLOSED_PAREN", "SEMICOLON", "SET",
-  "$accept", "result", "statement", "expr", YY_NULLPTR
+  "QUESTION", "ELSE", "THEN", "$accept", "result", "statement", "tern",
+  "expr", YY_NULLPTR
     };
     return yy_sname[yysymbol];
   }
@@ -2741,76 +2946,78 @@ namespace yy {
   }
 
 
-  const signed char parser::yypact_ninf_ = -11;
+  const signed char parser::yypact_ninf_ = -10;
 
   const signed char parser::yytable_ninf_ = -6;
 
   const signed char
   parser::yypact_[] =
   {
-     -11,     0,   -11,   -11,   -10,   -11,    13,    -5,    24,    13,
-     -11,    18,   -11,    13,    13,    13,    13,    24,   -11,    12,
-     -11,     1,    27
+     -10,    12,   -10,   -10,    -9,   -10,    -2,     3,   -10,    30,
+      -2,   -10,    24,   -10,    -2,    -2,    -2,    -2,    30,     4,
+      33,   -10,    13,    -1,    -2,    19,    -2,    30
   };
 
   const signed char
   parser::yydefact_[] =
   {
-       2,     0,     1,     4,    13,    14,     0,     0,     7,     0,
-      13,     0,     3,     0,     0,     0,     0,     6,    12,     8,
-      11,    10,     9
+       2,     0,     1,     4,    15,    16,     0,     0,    13,     7,
+       0,    15,     0,     3,     0,     0,     0,     0,     6,    14,
+       9,    12,    11,    10,     0,     0,     0,     8
   };
 
   const signed char
   parser::yypgoto_[] =
   {
-     -11,   -11,   -11,    -1
+     -10,   -10,   -10,   -10,    -6
   };
 
   const signed char
   parser::yydefgoto_[] =
   {
-       0,     1,     7,     8
+       0,     1,     7,     8,     9
   };
 
   const signed char
   parser::yytable_[] =
   {
-       2,     3,     9,     4,     5,    11,    12,    14,    17,     6,
-       0,    -5,    19,    20,    21,    22,    10,     5,    14,    15,
-      16,     0,     6,    13,    14,    15,    16,     0,    18,    13,
-      14,    15,    16,    14,    15
+      12,    11,     5,    10,    18,    15,    16,     6,    20,    21,
+      22,    23,     2,     3,    13,     4,     5,    24,    25,    15,
+      27,     6,     0,    -5,    14,    15,    16,    17,     0,    14,
+      15,    16,    17,    26,    19,    14,    15,    16,    17,    15,
+      16,    17
   };
 
   const signed char
   parser::yycheck_[] =
   {
-       0,     1,    12,     3,     4,     6,    11,     6,     9,     9,
-      -1,    11,    13,    14,    15,    16,     3,     4,     6,     7,
-       8,    -1,     9,     5,     6,     7,     8,    -1,    10,     5,
-       6,     7,     8,     6,     7
+       6,     3,     4,    12,    10,     6,     7,     9,    14,    15,
+      16,    17,     0,     1,    11,     3,     4,    13,    24,     6,
+      26,     9,    -1,    11,     5,     6,     7,     8,    -1,     5,
+       6,     7,     8,    14,    10,     5,     6,     7,     8,     6,
+       7,     8
   };
 
   const signed char
   parser::yystos_[] =
   {
-       0,    14,     0,     1,     3,     4,     9,    15,    16,    12,
-       3,    16,    11,     5,     6,     7,     8,    16,    10,    16,
-      16,    16,    16
+       0,    17,     0,     1,     3,     4,     9,    18,    19,    20,
+      12,     3,    20,    11,     5,     6,     7,     8,    20,    10,
+      20,    20,    20,    20,    13,    20,    14,    20
   };
 
   const signed char
   parser::yyr1_[] =
   {
-       0,    13,    14,    14,    14,    15,    15,    15,    16,    16,
-      16,    16,    16,    16,    16
+       0,    16,    17,    17,    17,    18,    18,    18,    19,    20,
+      20,    20,    20,    20,    20,    20,    20
   };
 
   const signed char
   parser::yyr2_[] =
   {
-       0,     2,     0,     3,     2,     0,     3,     1,     3,     3,
-       3,     3,     3,     1,     1
+       0,     2,     0,     3,     2,     0,     3,     1,     7,     3,
+       3,     3,     3,     1,     3,     1,     1
   };
 
 
@@ -2820,8 +3027,8 @@ namespace yy {
   const short
   parser::yyrline_[] =
   {
-       0,   265,   265,   266,   272,   295,   298,   303,   308,   309,
-     310,   311,   319,   324,   333
+       0,   285,   285,   286,   292,   315,   318,   333,   347,   359,
+     363,   367,   371,   381,   391,   396,   400
   };
 
   void
@@ -2853,9 +3060,9 @@ namespace yy {
 
 
 } // yy
-#line 2857 "simple.cc"
+#line 3064 "simple.cc"
 
-#line 335 "simple.yy"
+#line 403 "simple.yy"
 
 namespace yy
 {

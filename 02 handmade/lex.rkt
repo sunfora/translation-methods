@@ -57,13 +57,16 @@
        [retry   (syntax-id-rules () [_ (loop id ...)])])
       (cond body ...))))
       
+(define (var? x) (and (char? x) (or (char-alphabetic? x)
+                                    (eq? x #\-)
+                                    (eq? x #\_)
+                                    )))
+(define (dvar? x) (and (char? x) (or (var? x)
+                                     (char-numeric? x))))
+
 (define (lexer in)
   (define (op? x) (member x operations))
   (define (par? x) (member x parens))
-  (define (var? x) (and (char? x) (or (char-alphabetic? x)
-                                      (eq? x #\-)
-                                      (eq? x #\_)
-                                      )))
   (define skip? char-whitespace?)
   ; NOTE: короче вроде генераторы самый 
   ;       наитупейший варик тут сделать стримы
@@ -89,7 +92,7 @@
             (loop ([varcur cur    #:then (read-char in)]
                    [varpos pos    #:then (+ 1 varpos)]
                    [buffer '()    #:then (cons varcur buffer)])
-              {[var? varcur] advance}
+              {[dvar? varcur] advance}
               {else (begin
                       (set! pos varpos)
                       (set! cur varcur)

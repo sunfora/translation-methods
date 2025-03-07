@@ -1205,7 +1205,7 @@ async function createWasm() {
 
   var ___cxa_find_matching_catch_4 = (arg0,arg1) => findMatchingCatch([arg0,arg1]);
 
-  var ___cxa_find_matching_catch_5 = (arg0,arg1,arg2) => findMatchingCatch([arg0,arg1,arg2]);
+  var ___cxa_find_matching_catch_6 = (arg0,arg1,arg2,arg3) => findMatchingCatch([arg0,arg1,arg2,arg3]);
 
   
   
@@ -4637,7 +4637,7 @@ var wasmImports = {
   /** @export */
   __cxa_find_matching_catch_4: ___cxa_find_matching_catch_4,
   /** @export */
-  __cxa_find_matching_catch_5: ___cxa_find_matching_catch_5,
+  __cxa_find_matching_catch_6: ___cxa_find_matching_catch_6,
   /** @export */
   __cxa_rethrow: ___cxa_rethrow,
   /** @export */

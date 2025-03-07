@@ -178,7 +178,7 @@
 
 @(codeblock @(file->string "parser.rkt"))
 
-@section{Тестики и примеры}
+@section{Визуально}
 
 @(define base-eval 
       (parameterize ([sandbox-output 'string]
@@ -251,3 +251,15 @@
   (code:comment "")
   (eval:error (parse-string "!a && (b ^ c | d)"))
 ]
+
+@section{Тесты}
+
+@(base-eval '(require "test.rkt"))
+@examples[ 
+  #:label "Тесты"
+  #:eval base-eval
+  (test)
+]
+
+@section{Исходники тестов}
+@(codeblock @(file->string "test.rkt"))

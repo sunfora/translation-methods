@@ -7,6 +7,7 @@
   #include <vector>
   #include <map>
   #include <unordered_map>
+  #include <functional>
 
 
   namespace color {
@@ -115,17 +116,20 @@
     // Return the next token.
     parser::symbol_type yylex ()
     {
-      const int SEMICOLON    = 0b10000000000;
-      const int SET          = 0b01000000000;
-      const int WHITESPACE   = 0b00100000000;
-      const int VARIABLE     = 0b00010000000;
-      const int NUMBER       = 0b00001000000;
-      const int ADD          = 0b00000100000;
-      const int DIV          = 0b00000010000;
-      const int MUL          = 0b00000001000;
-      const int SUB          = 0b00000000100;
-      const int OPEN_PAREN   = 0b00000000010;
-      const int CLOSED_PAREN = 0b00000000001;
+      const int SEMICOLON    = 0b100000000000000;
+      const int ELSE         = 0b010000000000000;
+      const int THEN         = 0b001000000000000;
+      const int QUESTION     = 0b000100000000000;
+      const int SET          = 0b000001000000000;
+      const int WHITESPACE   = 0b000000100000000;
+      const int VARIABLE     = 0b000000010000000;
+      const int NUMBER       = 0b000000001000000;
+      const int ADD          = 0b000000000100000;
+      const int DIV          = 0b000000000010000;
+      const int MUL          = 0b000000000001000;
+      const int SUB          = 0b000000000000100;
+      const int OPEN_PAREN   = 0b000000000000010;
+      const int CLOSED_PAREN = 0b000000000000001;
 
       static std::string buffer;
       static int read = std::cin.get();
@@ -225,6 +229,18 @@
           collect(SET);
           return parser::make_SET('=');
         }
+        case '>': {
+          collect(THEN);
+          return parser::make_THEN('>');
+        }
+        case ':': {
+          collect(ELSE);
+          return parser::make_ELSE(':');
+        }
+        case '?': {
+          collect(QUESTION);
+          return parser::make_QUESTION('?');
+        }
       }
 
       /* nothing that looks like operator 
@@ -246,20 +262,24 @@
 /* grammar */
 %%
 %nterm <std::string> statement;
-%nterm <int> expr;
+%nterm <std::function<int(void)>> expr;
+%nterm <std::function<int(void)>> tern;
 
 %token <std::string> VARIABLE;
 %token <int>         NUMBER;
 
-%token <int>         ADD;
-%token <int>         DIV;
-%token <int>         MUL;          
-%token <int>         SUB;
+%token <char>         ADD;
+%token <char>         DIV;
+%token <char>         MUL;          
+%token <char>         SUB;
 
 %token <char>        OPEN_PAREN;
 %token <char>        CLOSED_PAREN;
 %token <char>        SEMICOLON;
 %token <char>        SET;
+%token <char>        QUESTION;
+%token <char>        ELSE;
+%token <char>        THEN;
 
 result:
   %empty
@@ -297,23 +317,75 @@ statement:
   }
 | VARIABLE SET expr {
     /* assign */
-    ctx->set($1, $3);
-    $$ = $1 + " = " + color::to_string(color::blue($3));
+      try {
+        ctx->set($1, $3());
+        $$ = $1 + " = " + color::to_string(color::blue($3()));
+      }
+      catch (undefined_variable e) {
+        yy::parser::error(e.message);
+        YYERROR;
+      }
+      catch (std::domain_error e) {
+        yy::parser::error(std::string{e.what()});
+        YYERROR;
+      }
   }
 | expr {
-    $$ = color::to_string(color::blue($1)); 
+    try {
+      $$ = color::to_string(color::blue($1())); 
+    }
+    catch (undefined_variable e) {
+      yy::parser::error(e.message);
+      YYERROR;
+    }
+    catch (std::domain_error e) {
+      yy::parser::error(std::string{e.what()});
+      YYERROR;
+    }
   };
 
-expr:
-    expr ADD expr { $$ = $1 + $3; }
-|   expr SUB expr { $$ = $1 - $3; }
-|   expr MUL expr { $$ = $1 * $3; }
-|   expr DIV expr { $$ = $1 / $3; };
+tern: OPEN_PAREN expr CLOSED_PAREN QUESTION expr ELSE expr {
+      auto a = $2; 
+      auto b = $5; 
+      auto c = $7; 
+      if (a()) {
+        $$ = b;
+      } else {
+        $$ = c;
+      }};
 
+
+expr:
+    expr ADD expr { auto a = $1;
+                    auto b = $3;
+                    $$ = [=](){return a() + b(); }; 
+                  }
+|   expr SUB expr { auto a = $1; 
+                    auto b = $3; 
+                    $$ = [=](){return a() - b(); }; 
+                  }
+|   expr MUL expr { auto a = $1; 
+                    auto b = $3; 
+                    $$ = [=](){return a() * b(); }; 
+                  }
+|   expr DIV expr { auto a = $1; 
+                    auto b = $3; 
+                    $$ = [=](){
+                      auto bv = b();
+                      if (bv == 0) {
+                        throw std::domain_error{"division by zero"};
+                      }
+                      return a() / bv; 
+                    }; 
+                  }
+|   tern {$$ = $1;};
+
+%left ELSE;
 %left ADD;
 %left SUB;
 %left MUL;
 %left DIV;
+
 
 expr:
   OPEN_PAREN expr CLOSED_PAREN {
@@ -322,15 +394,11 @@ expr:
 
 expr: 
   VARIABLE { 
-      try {
-        $$ = ctx->eval($1); 
-      }
-      catch (undefined_variable e) {
-        yy::parser::error(e.message);
-        YYERROR;
-      }
+      auto name = $1;
+      $$ = [=](){return ctx->eval(name);};
     }
-| NUMBER { $$ = $1; };
+| NUMBER { int x = $1;
+           $$ = [=](){return x;}; };
 
 %%
 namespace yy

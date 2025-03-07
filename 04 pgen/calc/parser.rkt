@@ -3,18 +3,45 @@
 (require "types.rkt")
 (require "lexer.rkt")
 
+
+(define (uop* f)
+  (λ (z)
+    (let* ([a (car z)]
+           [b (cdr z)]
+           [a* (f a)] 
+           [b* (f b)])
+      (displayln (format "operation: (~a ~a)\nint: ~a\nreal: ~a\ndiff: ~a" 
+                         (object-name f) z 
+                         a* b* (- a* b*)))
+      (newline)
+      (cons  a* b*))))
+
+(define (bop* f)
+  (λ (za zc)
+   (let* ([a (car za)]
+          [b (cdr za)]
+          [c (car zc)]
+          [d (cdr zc)]
+          [a* (round (f a c))] 
+          [b* (f b d)])
+      (displayln (format "operation: (~a ~a ~a)\nint: ~a \nreal: ~a\ndiff: ~a" 
+                       (object-name f)  za zc  
+                       a* b* (- a* b*)))
+      (newline)
+      (cons a* b*))))
+
 (define parse (make-parser {
   [lexer lexer]
   [grammar #:start-with parse-result
-     [(Un  -) [(op-sub )]]
-     [(Op1 /) [(op-div )]]
-     [(Op2 *) [(op-mul )]]
-     [(Op3 +) [(op-add)]]
-     [(Op4 -) [(op-sub)]]
+     [(Un  (uop* -)) [(op-sub )]]
+     [(Op1 (bop* /)) [(op-div )]]
+     [(Op2 (bop* *)) [(op-mul )]]
+     [(Op3 (bop* +)) [(op-add)]]
+     [(Op4 (bop* -)) [(op-sub)]]
 
      [(Pr (a v)) [(Un .a) (Pr .v)]]
      [(Pr v) [(open-paren) (E .v) (close-paren)]]
-     [(Pr v) [(number .p .t .v)]]
+     [(Pr (cons (inexact->exact (round v)) (exact->inexact v))) [(number .p .t .v)]]
     
      [(E1 v) [(Pr .a) (C1 .v a)]]
      [(C1 r .a) [(Op1 .op) (Pr .b) (C1 .r (op a b))]]
@@ -33,7 +60,7 @@
      [(C4 r .r) []]
 
      [(E v) [(E4 .v)]]
-     [(parse-result v) [(E .v) (end-of-input)]]
+     [(parse-result (list v)) [(E .v) (end-of-input)]]
     ]
 }))
 
