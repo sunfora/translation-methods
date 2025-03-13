@@ -6,29 +6,87 @@
 
 (define (uop* f)
   (λ (z)
-    (let* ([a (car z)]
-           [b (cdr z)]
-           [a* (f a)] 
-           [b* (f b)])
-      (displayln (format "operation: (~a ~a)\nint: ~a\nreal: ~a\ndiff: ~a" 
-                         (object-name f) z 
-                         a* b* (- a* b*)))
-      (newline)
-      (cons  a* b*))))
+    (define z-int (map first z))
+    (define z-flt (map second z))
+    (define z-dif (map third z))
+
+    (define c-int 
+      (format/list "~a~a" (list (object-name f)) z-int))
+
+    (define c-flt
+      (format/list "~a~a" (list (object-name f)) z-flt))
+    (define c-dif
+      (format/list "(~a~a)" (list "@") z-dif))
+    (define c
+      (map list c-int c-flt c-dif))
+
+    (define x (round (f (last z-int))))
+    (define y (f (last z-flt)))
+
+    (define c-last
+      (list (list x y (- x y))))
+    (append c c-last)))
 
 (define (bop* f)
-  (λ (za zc)
-   (let* ([a (car za)]
-          [b (cdr za)]
-          [c (car zc)]
-          [d (cdr zc)]
-          [a* (round (f a c))] 
-          [b* (f b d)])
-      (displayln (format "operation: (~a ~a ~a)\nint: ~a \nreal: ~a\ndiff: ~a" 
-                       (object-name f)  za zc  
-                       a* b* (- a* b*)))
-      (newline)
-      (cons a* b*))))
+  (λ (a b)
+    (define a-int (map first a))
+    (define a-flt (map second a))
+    (define a-dif (map third a))
+
+    (define b-int (map first b))
+    (define b-flt (map second b))
+    (define b-dif (map third b))
+
+    (define c-int 
+      (format/list "~a ~a ~a"
+                   a-int
+                   (list (object-name f))
+                   b-int))
+    (define c-flt
+      (format/list "~a ~a ~a"
+                   a-flt
+                   (list (object-name f))
+                   b-flt))
+    (define c-dif
+      (format/list "(~a ~a ~a)"
+                   a-dif
+                   (list "⊗")
+                   b-dif))
+
+    (define c-but (map list c-int c-flt c-dif))
+    
+    (define x (round (f (last a-int) (last b-int))))
+    (define y (f (last a-flt) (last b-flt)))
+
+    (define c-last 
+      (list (list x y (- x y))))
+    (append c-but c-last)))
+
+(define (format/list pattern . lists)
+  (define traversed '())
+  (define rest (map car lists))
+  (set! lists (map cdr lists))
+  (set! lists (cons (cons (car rest)
+                          (car lists))
+                    (cdr lists)))
+  (flatten 
+    (for/list ([list lists])
+      (let ([h (car rest)])
+        (set! rest (cdr rest))
+        (set! traversed (cons h traversed)))
+      (for/list ([elem list])
+        (set! traversed (cons elem (cdr traversed)))
+        (apply format pattern (append (reverse traversed) rest))))))
+
+(define (just-parens x)
+  (define x-int (map first x))
+  (define x-flt (map second x))
+  (define x-dif (map third x))
+  (define c-int (format/list "(~a)" x-int))
+  (define c-flt (format/list "(~a)" x-flt))
+  (define c-dif (format/list "(~a)" x-dif))
+  (define c (map list c-int c-flt c-dif))
+  (append c (list (last x))))
 
 (define parse (make-parser {
   [lexer lexer]
@@ -40,8 +98,14 @@
      [(Op4 (bop* -)) [(op-sub)]]
 
      [(Pr (a v)) [(Un .a) (Pr .v)]]
-     [(Pr v) [(open-paren) (E .v) (close-paren)]]
-     [(Pr (cons (inexact->exact (round v)) (exact->inexact v))) [(number .p .t .v)]]
+     [(Pr (just-parens v))
+        [(open-paren) (E .v) (close-paren)]]
+     [(Pr (list (list
+                  (inexact->exact (round v))
+                  (exact->inexact v)
+                  (- (inexact->exact (round v))
+                    (exact->inexact v) ))))
+      [(number .p .t .v)]]
     
      [(E1 v) [(Pr .a) (C1 .v a)]]
      [(C1 r .a) [(Op1 .op) (Pr .b) (C1 .r (op a b))]]
@@ -60,7 +124,12 @@
      [(C4 r .r) []]
 
      [(E v) [(E4 .v)]]
-     [(parse-result (list v)) [(E .v) (end-of-input)]]
+     [(parse-result (for ([x v])
+                      (displayln (format "  (int): ~a" (first x)))
+                      (displayln (format "(float): ~a" (second x)))
+                      (displayln (format "> ~a" (third x)))
+                      (displayln "--"))) 
+      [(E .v) (end-of-input)]]
     ]
 }))
 
